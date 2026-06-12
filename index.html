@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>集團合約管理系統</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  /* ── 蒔心田生醫品牌配色 ── */
+  :root {
+    --brand-brown:      #BA693D;
+    --brand-brown-dark: #9a5430;
+    --brand-beige:      #FEECD2;
+    --brand-yellow:     #D6B474;
+    --brand-darkbrown:  #3D1F01;
+  }
+  .sidebar-link { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px; color:#D6B474; font-size:14px; font-weight:500; text-decoration:none; transition:all .15s; }
+  .sidebar-link:hover { background:rgba(186,105,61,0.25); color:#FEECD2; }
+  .sidebar-link.active { background:#BA693D; color:#fff; }
+  .tab-btn { padding:8px 16px; font-size:14px; font-weight:500; border-bottom:2px solid transparent; color:#6b7280; cursor:pointer; transition:all .15s; white-space:nowrap; }
+  .tab-btn.active { border-color:#BA693D; color:#BA693D; }
+  .tab-btn:hover:not(.active) { color:#374151; }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal-box { background:#fff; border-radius:12px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  input,select,textarea { border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; width:100%; outline:none; transition:border .15s; }
+  input:focus,select:focus,textarea:focus { border-color:#BA693D; box-shadow:0 0 0 3px rgba(186,105,61,.15); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:all .15s; border:none; }
+  .btn-primary { background:#BA693D; color:#fff; }
+  .btn-primary:hover { background:#9a5430; }
+  .btn-danger { background:#dc2626; color:#fff; }
+  .btn-danger:hover { background:#b91c1c; }
+  .btn-secondary { background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
+  .btn-secondary:hover { background:#e5e7eb; }
+  .btn-warning { background:#d97706; color:#fff; }
+  .btn-warning:hover { background:#b45309; }
+  .badge { display:inline-flex; align-items:center; padding:2px 10px; border-radius:9999px; font-size:12px; font-weight:500; }
+  .form-label { display:block; font-size:13px; font-weight:500; color:#374151; margin-bottom:4px; }
+  .form-group { margin-bottom:16px; }
+  tr.clickable:hover { background:#fdf8f4; cursor:pointer; }
+  /* 品牌色 scrollbar */
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-track { background:#f3f4f6; }
+  ::-webkit-scrollbar-thumb { background:#D6B474; border-radius:3px; }
+</style>
+</head>
+<body class="bg-gray-50">
+
+<!-- ═══════════════════════════════════════════════════════ LOGIN ═══ -->
+<div id="login-view" class="min-h-screen flex items-center justify-center" style="background:linear-gradient(135deg, #3D1F01 0%, #6b3515 50%, #9a5430 100%);">
+  <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style="background:#BA693D;">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900">集團合約管理</h1>
+      <p class="text-gray-400 text-sm mt-1">The Richdaily Group</p>
+    </div>
+    <form id="login-form" class="space-y-4">
+      <div>
+        <label class="form-label">Email</label>
+        <input type="email" id="login-email" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div>
+        <label class="form-label">密碼</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div id="login-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg"></div>
+      <button type="submit" class="btn btn-primary w-full justify-center py-2.5">登入</button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ APP SHELL ═══ -->
+<div id="app" class="hidden" style="display:none; height:100vh; display:flex; overflow:hidden;">
+
+  <!-- Sidebar -->
+  <aside style="width:224px; flex-shrink:0; background:#3D1F01; display:flex; flex-direction:column;">
+    <div style="padding:20px 16px; border-bottom:1px solid rgba(214,180,116,0.2);">
+      <div style="color:#FEECD2; font-size:15px; font-weight:700;">合約管理系統</div>
+      <div style="color:#D6B474; font-size:11px; margin-top:2px;">The Richdaily Group</div>
+    </div>
+    <nav style="flex:1; padding:12px 8px; display:flex; flex-direction:column; gap:4px;">
+      <a href="#contracts" class="sidebar-link active" data-view="contracts">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        合約列表
+      </a>
+      <a href="#categories" class="sidebar-link" data-view="categories">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+        分類管理
+      </a>
+      <a href="#users" class="sidebar-link" data-view="users">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        使用者管理
+      </a>
+    </nav>
+    <div style="padding:12px 16px; border-top:1px solid rgba(214,180,116,0.2);">
+      <div id="user-info-sidebar" style="color:#D6B474; font-size:12px; margin-bottom:8px;"></div>
+      <button onclick="doSignOut()" style="color:#D6B474; font-size:12px; background:none; border:none; cursor:pointer; padding:0;">登出 →</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main style="flex:1; overflow:auto; background:#f8fafc;">
+
+    <!-- ── 合約列表 ── -->
+    <div id="view-contracts" class="hidden p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">合約列表</h2>
+          <p class="text-sm text-gray-500 mt-0.5">管理所有集團合約</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateContract()">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          新增合約
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-gray-900" id="stat-total">-</div>
+          <div class="text-xs text-gray-500 mt-1">合約總數</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-green-600" id="stat-active">-</div>
+          <div class="text-xs text-gray-500 mt-1">正常有效</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-amber-500" id="stat-expiring">-</div>
+          <div class="text-xs text-gray-500 mt-1">即將到期（60天內）</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-red-600" id="stat-expired">-</div>
+          <div class="text-xs text-gray-500 mt-1">已到期</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
+        <div class="grid grid-cols-5 gap-3">
+          <input id="filter-search" placeholder="🔍 搜尋合約編號/標題/對方..." oninput="applyFilters()" style="grid-column:span 2;">
+          <select id="filter-co" onchange="applyFilters()">
+            <option value="">全部公司</option>
+            <option value="xiaori">小日常</option>
+            <option value="xiangyue">翔悅建設</option>
+            <option value="shixin">蒔心田生醫</option>
+            <option value="gaoshu">高速駕訓班</option>
+          </select>
+          <select id="filter-status" onchange="applyFilters()">
+            <option value="">全部狀態</option>
+            <option value="active">正常</option>
+            <option value="expiring">即將到期</option>
+            <option value="expired">已到期</option>
+          </select>
+          <select id="filter-category" onchange="applyFilters()">
+            <option value="">全部分類</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">合約編號</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">標題</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">公司</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">分類</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">對方</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">到期日</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">狀態</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">金額</th>
+            </tr>
+          </thead>
+          <tbody id="contracts-tbody">
+            <tr><td colspan="8" class="text-center py-12 text-gray-400">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 合約詳情 ── -->
+    <div id="view-contract-detail" class="hidden">
+      <div id="contract-detail-content" class="p-6">
+        <div class="text-center py-12 text-gray-400">載入中...</div>
+      </div>
+    </div>
+
+    <!-- ── 分類管理 ── -->
+    <div id="view-categories" class="hidden p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">分類管理</h2>
+          <p class="text-sm text-gray-500 mt-0.5">管理合約分類標籤</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCategoryModal()">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          新增分類
+        </button>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">代碼</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">名稱</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">排序</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">狀態</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">操作</th>
+            </tr>
+          </thead>
+          <tbody id="categories-tbody">
+            <tr><td colspan="5" class="text-center py-8 text-gray-400">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 使用者管理 ── -->
+    <div id="view-users" class="hidden p-6">
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-gray-900">使用者管理</h2>
+        <p class="text-sm text-gray-500 mt-0.5">查看系統帳號與權限</p>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">姓名</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Email</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">角色</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">負責公司</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">狀態</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="5" class="text-center py-8 text-gray-400">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ MODALS ═══ -->
+
+<!-- 新增合約 Modal -->
+<div id="modal-create-contract" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:640px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900">新增合約</h3>
+      <button onclick="closeModal('modal-create-contract')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <form id="form-create-contract" class="p-6" onsubmit="submitCreateContract(event)">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">合約標題 *</label>
+          <input type="text" name="title" required placeholder="例：2026年辦公室租賃合約">
+        </div>
+        <div class="form-group">
+          <label class="form-label">公司 *</label>
+          <select name="co" required>
+            <option value="">請選擇</option>
+            <option value="xiaori">小日常</option>
+            <option value="xiangyue">翔悅建設</option>
+            <option value="shixin">蒔心田生醫</option>
+            <option value="gaoshu">高速駕訓班</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">分類 *</label>
+          <select name="category_id" id="create-category-select" required>
+            <option value="">請選擇</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">甲方 *</label>
+          <input type="text" name="party_a" required placeholder="合約甲方名稱">
+        </div>
+        <div class="form-group">
+          <label class="form-label">乙方 *</label>
+          <input type="text" name="party_b" required placeholder="合約乙方名稱">
+        </div>
+        <div class="form-group">
+          <label class="form-label">對方聯絡人</label>
+          <input type="text" name="party_b_contact" placeholder="聯絡人姓名/電話">
+        </div>
+        <div class="form-group">
+          <label class="form-label">我方角色 *</label>
+          <select name="our_party_role" required>
+            <option value="party_a">甲方（我方）</option>
+            <option value="party_b">乙方（我方）</option>
+            <option value="both">雙方</option>
+            <option value="none">第三方</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">開始日期 *</label>
+          <input type="date" name="start_date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">到期日 *</label>
+          <input type="date" name="end_date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">合約金額</label>
+          <input type="number" name="amount" min="0" placeholder="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">幣別</label>
+          <select name="currency">
+            <option value="NTD">NTD（新台幣）</option>
+            <option value="USD">USD（美元）</option>
+            <option value="CNY">CNY（人民幣）</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">負責人 *</label>
+          <input type="text" name="officer" required placeholder="負責人姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">負責人 Email *</label>
+          <input type="email" name="officer_email" required placeholder="officer@example.com">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">備註</label>
+          <textarea name="notes" rows="2" placeholder="其他備注事項..."></textarea>
+        </div>
+      </div>
+      <div id="create-contract-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-3">
+        <button type="button" onclick="closeModal('modal-create-contract')" class="btn btn-secondary">取消</button>
+        <button type="submit" class="btn btn-primary">建立合約</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 更新到期日 Modal -->
+<div id="modal-edit-enddate" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900">更新到期日</h3>
+      <button onclick="closeModal('modal-edit-enddate')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="p-6">
+      <div class="form-group">
+        <label class="form-label">新到期日 *</label>
+        <input type="date" id="new-end-date">
+      </div>
+      <div id="edit-enddate-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-3">
+        <button onclick="closeModal('modal-edit-enddate')" class="btn btn-secondary">取消</button>
+        <button onclick="submitUpdateEndDate()" class="btn btn-primary">確認更新</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 封存確認 Modal -->
+<div id="modal-archive-confirm" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="p-6">
+      <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      </div>
+      <h3 class="text-lg font-bold text-gray-900 text-center mb-2">確認封存合約？</h3>
+      <p class="text-sm text-gray-500 text-center mb-6">封存後該合約將不再顯示於列表，且無法復原。</p>
+      <div class="flex justify-center gap-3">
+        <button onclick="closeModal('modal-archive-confirm')" class="btn btn-secondary">取消</button>
+        <button onclick="submitArchive()" class="btn btn-danger">確認封存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/編輯里程碑 Modal -->
+<div id="modal-milestone" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900" id="milestone-modal-title">新增里程碑</h3>
+      <button onclick="closeModal('modal-milestone')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <form id="form-milestone" class="p-6" onsubmit="submitMilestone(event)">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">里程碑名稱 *</label>
+          <input type="text" name="name" required placeholder="例：首期款、驗收尾款">
+        </div>
+        <div class="form-group">
+          <label class="form-label">金額 *</label>
+          <input type="number" name="amount" min="0" required value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">佔比（%）</label>
+          <input type="number" name="pct" min="0" max="100" placeholder="留空則不顯示">
+        </div>
+        <div class="form-group">
+          <label class="form-label">方向 *</label>
+          <select name="direction" required>
+            <option value="payable">應付款</option>
+            <option value="receivable">應收款</option>
+            <option value="non_cash">非現金</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">狀態 *</label>
+          <select name="status" required>
+            <option value="planned">計劃中</option>
+            <option value="invoiced">已開發票</option>
+            <option value="settled">已結清</option>
+            <option value="cancelled">已取消</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">到期日</label>
+          <input type="date" name="due_date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">結清日期</label>
+          <input type="date" name="settled_date">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">付款條件說明</label>
+          <input type="text" name="condition_text" placeholder="例：驗收後30天內">
+        </div>
+        <div class="form-group">
+          <label class="form-label">財務單號</label>
+          <input type="text" name="finance_ref" placeholder="財務系統參考號">
+        </div>
+        <div class="form-group">
+          <label class="form-label">排序</label>
+          <input type="number" name="sort_order" value="0">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">備註</label>
+          <textarea name="note" rows="2"></textarea>
+        </div>
+      </div>
+      <div id="milestone-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-3">
+        <button type="button" onclick="closeModal('modal-milestone')" class="btn btn-secondary">取消</button>
+        <button type="submit" class="btn btn-primary">儲存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 上傳附件 Modal -->
+<div id="modal-upload" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900">上傳合約附件</h3>
+      <button onclick="closeModal('modal-upload')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="p-6">
+      <div class="form-group">
+        <label class="form-label">選擇檔案 *</label>
+        <input type="file" id="upload-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+      </div>
+      <div class="form-group">
+        <label class="form-label">版本號 *</label>
+        <input type="text" id="upload-version" placeholder="例：v1.0" value="v1.0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">版本說明</label>
+        <input type="text" id="upload-note" placeholder="例：正式版、修訂版">
+      </div>
+      <div id="upload-progress" class="hidden text-sm text-indigo-600 bg-indigo-50 p-3 rounded-lg mb-4">上傳中...</div>
+      <div id="upload-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-3">
+        <button onclick="closeModal('modal-upload')" class="btn btn-secondary">取消</button>
+        <button onclick="submitUpload()" class="btn btn-primary">上傳</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/編輯分類 Modal -->
+<div id="modal-category" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900" id="category-modal-title">新增分類</h3>
+      <button onclick="closeModal('modal-category')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <form id="form-category" class="p-6" onsubmit="submitCategory(event)">
+      <div class="form-group">
+        <label class="form-label">代碼 * <span class="text-gray-400 font-normal">(英文小寫+底線)</span></label>
+        <input type="text" name="code" required placeholder="例：maintenance" pattern="[a-z_]+">
+      </div>
+      <div class="form-group">
+        <label class="form-label">名稱 *</label>
+        <input type="text" name="name" required placeholder="例：維護合約">
+      </div>
+      <div class="form-group">
+        <label class="form-label">排序</label>
+        <input type="number" name="sort_order" value="0">
+      </div>
+      <div id="category-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-3">
+        <button type="button" onclick="closeModal('modal-category')" class="btn btn-secondary">取消</button>
+        <button type="submit" class="btn btn-primary">儲存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SCRIPT ═══ -->
+<script>
+const SUPABASE_URL = 'https://dqxdgxbebumxtbyvbxkn.supabase.co'
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxeGRneGJlYnVteHRieXZieGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NDEwMzMsImV4cCI6MjA5MTUxNzAzM30.PF-nVLU6oFcsArQveJF6jhdrN4LnYfzug3-SgCa0n5o'
+const sb = window.supabase.createClient(SUPABASE_URL, ANON_KEY)
+
+// ── State ──
+let authUser = null
+let userProfile = null
+let allContracts = []
+let allCategories = []
+let currentContractId = null
+let currentMilestoneId = null
+let editingCategoryId = null
+
+// ── Constants ──
+const CO = {
+  xiaori:   { name: '小日常',    badge: 'background:#dbeafe;color:#1d4ed8' },
+  xiangyue: { name: '翔悅建設',  badge: 'background:#fef3c7;color:#b45309' },
+  shixin:   { name: '蒔心田生醫', badge: 'background:#FEECD2;color:#BA693D' },
+  gaoshu:   { name: '高速駕訓班', badge: 'background:#fee2e2;color:#dc2626' }
+}
+const STATUS = {
+  active:   { label: '正常',     style: 'background:#dcfce7;color:#15803d' },
+  expiring: { label: '即將到期', style: 'background:#fef3c7;color:#b45309' },
+  expired:  { label: '已到期',   style: 'background:#fee2e2;color:#dc2626' }
+}
+const MS_STATUS = {
+  planned:   { label: '計劃中',   style: 'background:#f3f4f6;color:#374151' },
+  invoiced:  { label: '已開發票', style: 'background:#dbeafe;color:#1d4ed8' },
+  settled:   { label: '已結清',   style: 'background:#dcfce7;color:#15803d' },
+  cancelled: { label: '已取消',   style: 'background:#fee2e2;color:#dc2626' }
+}
+const DIRECTION = { payable: '應付', receivable: '應收', non_cash: '非現金' }
+const OUR_ROLE = { party_a: '甲方（我方）', party_b: '乙方（我方）', both: '雙方', none: '第三方' }
+
+// ── Utils ──
+const $ = id => document.getElementById(id)
+const fmt = n => (n != null && n !== '') ? `NT$ ${Number(n).toLocaleString()}` : '-'
+const fmtDate = d => d ? d.slice(0, 10) : '-'
+const coName = co => CO[co]?.name || co
+const coBadge = co => {
+  const c = CO[co]
+  if (!c) return `<span>${co || '-'}</span>`
+  return `<span class="badge" style="${c.badge}">${c.name}</span>`
+}
+const statusBadge = s => {
+  const c = STATUS[s]
+  if (!c) return `<span>${s || '-'}</span>`
+  return `<span class="badge" style="${c.style}">${c.label}</span>`
+}
+const msBadge = s => {
+  const c = MS_STATUS[s]
+  if (!c) return `<span>${s || '-'}</span>`
+  return `<span class="badge" style="${c.style}">${c.label}</span>`
+}
+
+function showErr(elId, msg) {
+  const el = $(elId)
+  if (!el) return
+  el.textContent = msg
+  el.classList.remove('hidden')
+  setTimeout(() => el.classList.add('hidden'), 5000)
+}
+function clearErr(elId) {
+  const el = $(elId)
+  if (el) el.classList.add('hidden')
+}
+
+// ── Auth ──
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    authUser = session.user
+    await loadUserProfile()
+    showApp()
+  } else {
+    authUser = null
+    userProfile = null
+    showLogin()
+  }
+})
+
+async function loadUserProfile() {
+  const { data } = await sb.from('cntr_users').select('*').eq('user_id', authUser.id).single()
+  userProfile = data
+  if (userProfile) {
+    $('user-info-sidebar').innerHTML = `<b style="color:#e2e8f0">${userProfile.name}</b><br>${userProfile.role === 'gm' ? '總管理者' : '經辦人員'}`
+  }
+}
+
+$('login-form').addEventListener('submit', async e => {
+  e.preventDefault()
+  const email = $('login-email').value.trim()
+  const password = $('login-password').value
+  const btn = e.target.querySelector('button[type=submit]')
+  btn.textContent = '登入中...'
+  btn.disabled = true
+  const { error } = await sb.auth.signInWithPassword({ email, password })
+  btn.textContent = '登入'
+  btn.disabled = false
+  if (error) {
+    $('login-error').textContent = '帳號或密碼錯誤'
+    $('login-error').classList.remove('hidden')
+  }
+})
+
+async function doSignOut() {
+  await sb.auth.signOut()
+}
+
+function showLogin() {
+  $('login-view').style.display = 'flex'
+  $('app').style.display = 'none'
+}
+
+function showApp() {
+  $('login-view').style.display = 'none'
+  $('app').style.display = 'flex'
+  navigate(location.hash || '#contracts')
+}
+
+// ── Router ──
+function navigate(hash) {
+  if (!authUser) return
+  const raw = hash.replace('#', '') || 'contracts'
+  const parts = raw.split('/')
+  const view = parts[0]
+
+  document.querySelectorAll('[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === view)
+  })
+
+  const views = ['contracts', 'contract-detail', 'categories', 'users']
+  views.forEach(v => { const el = $('view-' + v); if (el) el.classList.add('hidden') })
+
+  if (view === 'contract' && parts[1]) {
+    currentContractId = parts[1]
+    $('view-contract-detail').classList.remove('hidden')
+    loadContractDetail(parts[1])
+  } else if (view === 'categories') {
+    $('view-categories').classList.remove('hidden')
+    loadCategoriesView()
+  } else if (view === 'users') {
+    $('view-users').classList.remove('hidden')
+    loadUsersView()
+  } else {
+    $('view-contracts').classList.remove('hidden')
+    loadContracts()
+  }
+}
+
+window.addEventListener('hashchange', () => navigate(location.hash))
+
+// ── Contract List ──
+async function loadContracts() {
+  const { data, error } = await sb
+    .from('contracts_view')
+    .select('*, cntr_categories(name)')
+    .order('end_date')
+  if (error) { console.error(error); return }
+  allContracts = data || []
+  renderContractStats()
+  renderFilterCategoryOptions()
+  renderContractTable()
+}
+
+function renderContractStats() {
+  $('stat-total').textContent = allContracts.length
+  $('stat-active').textContent = allContracts.filter(c => c.status === 'active').length
+  $('stat-expiring').textContent = allContracts.filter(c => c.status === 'expiring').length
+  $('stat-expired').textContent = allContracts.filter(c => c.status === 'expired').length
+}
+
+function renderFilterCategoryOptions() {
+  const sel = $('filter-category')
+  const cur = sel.value
+  sel.innerHTML = '<option value="">全部分類</option>'
+  allCategories.forEach(c => {
+    const opt = document.createElement('option')
+    opt.value = c.id
+    opt.textContent = c.name
+    sel.appendChild(opt)
+  })
+  sel.value = cur
+}
+
+function applyFilters() {
+  const search = ($('filter-search')?.value || '').toLowerCase()
+  const co = $('filter-co')?.value || ''
+  const status = $('filter-status')?.value || ''
+  const cat = $('filter-category')?.value || ''
+
+  const list = allContracts.filter(c => {
+    if (co && c.co !== co) return false
+    if (status && c.status !== status) return false
+    if (cat && c.category_id !== cat) return false
+    if (search && !c.no.toLowerCase().includes(search) &&
+        !c.title.toLowerCase().includes(search) &&
+        !(c.party_b||'').toLowerCase().includes(search)) return false
+    return true
+  })
+  renderContractTableFrom(list)
+}
+
+function renderContractTable() {
+  renderContractTableFrom(allContracts)
+}
+
+function renderContractTableFrom(list) {
+  const tbody = $('contracts-tbody')
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">暫無合約記錄</td></tr>`
+    return
+  }
+  tbody.innerHTML = list.map(c => `
+    <tr class="clickable" style="border-bottom:1px solid #f3f4f6;" onclick="location.hash='contract/${c.id}'">
+      <td class="px-4 py-3 font-mono text-xs text-gray-500">${c.no}</td>
+      <td class="px-4 py-3 text-sm font-medium text-gray-900" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title}</td>
+      <td class="px-4 py-3">${coBadge(c.co)}</td>
+      <td class="px-4 py-3 text-xs text-gray-500">${c.cntr_categories?.name || '-'}</td>
+      <td class="px-4 py-3 text-sm text-gray-600" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.party_b}</td>
+      <td class="px-4 py-3 text-sm text-gray-600">${fmtDate(c.end_date)}</td>
+      <td class="px-4 py-3">${statusBadge(c.status)}</td>
+      <td class="px-4 py-3 text-sm text-gray-600 text-right">${fmt(c.amount)}</td>
+    </tr>
+  `).join('')
+}
+
+// ── Contract Detail ──
+async function loadContractDetail(id) {
+  $('contract-detail-content').innerHTML = `<div class="text-center py-16 text-gray-400">載入中...</div>`
+
+  const [{ data: contract }, { data: milestones }, { data: versions }, { data: logs }] = await Promise.all([
+    sb.from('contracts').select('*, cntr_categories(name, code)').eq('id', id).single(),
+    sb.from('contract_milestones').select('*').eq('contract_id', id).order('sort_order').order('created_at' , { referencedTable: 'contract_milestones', ascending: true }),
+    sb.from('contract_versions').select('*').eq('contract_id', id).is('archived_at', null).order('uploaded_at', { ascending: false }),
+    sb.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }).limit(50)
+  ])
+
+  if (!contract) {
+    $('contract-detail-content').innerHTML = `<div class="text-center py-16 text-red-400">合約不存在或無存取權限</div>`
+    return
+  }
+
+  renderContractDetail(contract, milestones || [], versions || [], logs || [])
+}
+
+function renderContractDetail(c, milestones, versions, logs) {
+  const isArchived = !!c.archived_at
+
+  $('contract-detail-content').innerHTML = `
+    <div class="mb-4">
+      <a href="#contracts" style="color:#6b7280; font-size:14px; text-decoration:none;" onclick="history.back()">← 返回列表</a>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <span class="font-mono text-sm text-gray-500">${c.no}</span>
+            ${coBadge(c.co)}
+            ${isArchived ? '<span class="badge" style="background:#f3f4f6;color:#6b7280">已封存</span>' : statusBadge(c.status || 'active')}
+          </div>
+          <h1 class="text-2xl font-bold text-gray-900">${c.title}</h1>
+          <div class="text-sm text-gray-500 mt-1">分類：${c.cntr_categories?.name || '-'} ・ 到期：${fmtDate(c.end_date)} ・ 剩餘 ${c.days_remaining ?? '-'} 天</div>
+        </div>
+        ${!isArchived ? `
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="openEditEndDate('${c.id}', '${c.end_date}')">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            更新到期日
+          </button>
+          <button class="btn btn-danger" onclick="openArchiveConfirm('${c.id}')">
+            封存合約
+          </button>
+        </div>` : ''}
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div style="border-bottom:1px solid #e5e7eb; display:flex; overflow-x:auto; padding:0 16px;">
+        <button class="tab-btn active" onclick="showTab('info', this)">基本資訊</button>
+        <button class="tab-btn" onclick="showTab('milestones', this)">里程碑 (${milestones.length})</button>
+        <button class="tab-btn" onclick="showTab('versions', this)">附件 (${versions.length})</button>
+        <button class="tab-btn" onclick="showTab('logs', this)">稽核日誌</button>
+      </div>
+
+      <!-- Tab: 基本資訊 -->
+      <div id="tab-info" class="p-6">
+        <div class="grid grid-cols-3 gap-6">
+          ${infoRow('甲方', c.party_a)}
+          ${infoRow('乙方', c.party_b)}
+          ${infoRow('對方聯絡人', c.party_b_contact || '-')}
+          ${infoRow('我方角色', OUR_ROLE[c.our_party_role] || c.our_party_role)}
+          ${infoRow('開始日期', fmtDate(c.start_date))}
+          ${infoRow('到期日', fmtDate(c.end_date))}
+          ${infoRow('合約金額', `${fmt(c.amount)} ${c.currency || 'NTD'}`)}
+          ${infoRow('負責人', c.officer)}
+          ${infoRow('負責人 Email', c.officer_email)}
+          ${infoRow('建立者', c.created_by)}
+          ${infoRow('建立時間', fmtDate(c.created_at))}
+          ${infoRow('最後更新', fmtDate(c.updated_at))}
+          ${c.notes ? `<div style="grid-column:span 3;">${infoRow('備註', c.notes)}</div>` : ''}
+          ${isArchived ? `<div style="grid-column:span 3;">${infoRow('封存時間', fmtDate(c.archived_at))} ${infoRow('封存者', c.archived_by)}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- Tab: 里程碑 -->
+      <div id="tab-milestones" class="hidden">
+        ${!isArchived ? `
+        <div class="p-4 border-b border-gray-100 flex justify-end">
+          <button class="btn btn-primary" onclick="openMilestoneModal(null, '${c.id}')">+ 新增里程碑</button>
+        </div>` : ''}
+        ${milestones.length === 0
+          ? `<div class="text-center py-12 text-gray-400">尚無里程碑</div>`
+          : `<table class="w-full text-sm">
+              <thead><tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">名稱</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500">金額</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">方向</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">到期日</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">狀態</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500">操作</th>
+              </tr></thead>
+              <tbody>${milestones.map(m => `
+                <tr style="border-bottom:1px solid #f3f4f6;">
+                  <td class="px-4 py-3 font-medium text-gray-900">${m.name}<br><span class="text-xs text-gray-400">${m.condition_text || ''}</span></td>
+                  <td class="px-4 py-3 text-right text-gray-700">${fmt(m.amount)}${m.pct ? ` <span class="text-xs text-gray-400">(${m.pct}%)</span>` : ''}</td>
+                  <td class="px-4 py-3 text-gray-600">${DIRECTION[m.direction] || m.direction}</td>
+                  <td class="px-4 py-3 text-gray-600">${fmtDate(m.due_date)}</td>
+                  <td class="px-4 py-3">${msBadge(m.status)}</td>
+                  <td class="px-4 py-3 text-right">
+                    ${!isArchived ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="openMilestoneModal('${m.id}', '${c.id}')">編輯</button>` : ''}
+                  </td>
+                </tr>`).join('')}
+              </tbody>
+            </table>`
+        }
+      </div>
+
+      <!-- Tab: 附件 -->
+      <div id="tab-versions" class="hidden">
+        ${!isArchived ? `
+        <div class="p-4 border-b border-gray-100 flex justify-end">
+          <button class="btn btn-primary" onclick="openUploadModal('${c.id}', '${c.co}', ${versions.length})">+ 上傳附件</button>
+        </div>` : ''}
+        ${versions.length === 0
+          ? `<div class="text-center py-12 text-gray-400">尚無附件</div>`
+          : `<table class="w-full text-sm">
+              <thead><tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">版本</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">檔案名稱</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">說明</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">上傳者</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">上傳時間</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500">操作</th>
+              </tr></thead>
+              <tbody>${versions.map(v => `
+                <tr style="border-bottom:1px solid #f3f4f6;">
+                  <td class="px-4 py-3 font-mono text-xs text-indigo-600">${v.version_no}</td>
+                  <td class="px-4 py-3 text-gray-700">${v.file_name || '-'}</td>
+                  <td class="px-4 py-3 text-gray-500 text-xs">${v.note || '-'}</td>
+                  <td class="px-4 py-3 text-gray-500 text-xs">${v.uploaded_by || '-'}</td>
+                  <td class="px-4 py-3 text-gray-500 text-xs">${fmtDate(v.uploaded_at)}</td>
+                  <td class="px-4 py-3 text-right">
+                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="downloadVersion('${v.storage_path}')">下載</button>
+                    ${!isArchived ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="confirmDeleteVersion('${v.id}', '${v.storage_path}')">刪除</button>` : ''}
+                  </td>
+                </tr>`).join('')}
+              </tbody>
+            </table>`
+        }
+      </div>
+
+      <!-- Tab: 稽核日誌 -->
+      <div id="tab-logs" class="hidden p-6">
+        ${logs.length === 0
+          ? `<div class="text-center py-8 text-gray-400">暫無日誌</div>`
+          : `<div class="space-y-2">${logs.map(l => `
+              <div class="flex gap-3 text-sm py-2 border-b border-gray-50">
+                <div class="text-gray-400 text-xs whitespace-nowrap pt-0.5">${fmtDate(l.created_at)}</div>
+                <div>
+                  <span class="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-2">${l.action}</span>
+                  <span class="text-gray-700">${l.detail || ''}</span>
+                  ${l.actor ? `<span class="text-gray-400 text-xs ml-2">by ${l.actor}</span>` : ''}
+                </div>
+              </div>`).join('')}
+            </div>`
+        }
+      </div>
+    </div>
+  `
+
+  // Store data for modals
+  window._currentContract = c
+  window._currentMilestones = milestones
+}
+
+function infoRow(label, value) {
+  return `<div><div style="font-size:12px;color:#9ca3af;font-weight:500;margin-bottom:2px;">${label}</div><div style="font-size:14px;color:#1f2937;">${value || '-'}</div></div>`
+}
+
+function showTab(tab, btn) {
+  const tabs = ['info', 'milestones', 'versions', 'logs']
+  tabs.forEach(t => {
+    const el = $('tab-' + t)
+    if (el) el.classList.toggle('hidden', t !== tab)
+  })
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+  if (btn) btn.classList.add('active')
+}
+
+// ── Create Contract ──
+async function openCreateContract() {
+  await ensureCategories()
+  const sel = $('create-category-select')
+  sel.innerHTML = '<option value="">請選擇</option>'
+  allCategories.filter(c => c.is_active).forEach(c => {
+    const opt = document.createElement('option')
+    opt.value = c.id
+    opt.textContent = c.name
+    sel.appendChild(opt)
+  })
+  $('form-create-contract').reset()
+  clearErr('create-contract-error')
+  $('modal-create-contract').classList.remove('hidden')
+}
+
+async function submitCreateContract(e) {
+  e.preventDefault()
+  const form = e.target
+  const fd = new FormData(form)
+  const btn = form.querySelector('button[type=submit]')
+  btn.textContent = '建立中...'
+  btn.disabled = true
+
+  const { data, error } = await sb.rpc('create_contract', {
+    p_co:              fd.get('co'),
+    p_title:           fd.get('title'),
+    p_category_id:     fd.get('category_id'),
+    p_party_a:         fd.get('party_a'),
+    p_party_b:         fd.get('party_b'),
+    p_party_b_contact: fd.get('party_b_contact') || null,
+    p_our_party_role:  fd.get('our_party_role'),
+    p_start_date:      fd.get('start_date'),
+    p_end_date:        fd.get('end_date'),
+    p_amount:          Number(fd.get('amount')) || 0,
+    p_currency:        fd.get('currency'),
+    p_officer:         fd.get('officer'),
+    p_officer_email:   fd.get('officer_email'),
+    p_notes:           fd.get('notes') || null
+  })
+
+  btn.textContent = '建立合約'
+  btn.disabled = false
+
+  if (error) {
+    showErr('create-contract-error', error.message)
+    return
+  }
+
+  closeModal('modal-create-contract')
+  location.hash = `contract/${data}`
+}
+
+// ── Edit End Date ──
+function openEditEndDate(contractId, currentEndDate) {
+  currentContractId = contractId
+  $('new-end-date').value = currentEndDate
+  clearErr('edit-enddate-error')
+  $('modal-edit-enddate').classList.remove('hidden')
+}
+
+async function submitUpdateEndDate() {
+  const newDate = $('new-end-date').value
+  if (!newDate) { showErr('edit-enddate-error', '請選擇日期'); return }
+  const btn = $('modal-edit-enddate').querySelector('button.btn-primary')
+  btn.textContent = '更新中...'
+  btn.disabled = true
+
+  const { error } = await sb.rpc('update_contract_end_date', {
+    p_contract_id:  currentContractId,
+    p_new_end_date: newDate
+  })
+
+  btn.textContent = '確認更新'
+  btn.disabled = false
+
+  if (error) { showErr('edit-enddate-error', error.message); return }
+  closeModal('modal-edit-enddate')
+  loadContractDetail(currentContractId)
+}
+
+// ── Archive ──
+function openArchiveConfirm(contractId) {
+  currentContractId = contractId
+  $('modal-archive-confirm').classList.remove('hidden')
+}
+
+async function submitArchive() {
+  const btn = $('modal-archive-confirm').querySelector('button.btn-danger')
+  btn.textContent = '封存中...'
+  btn.disabled = true
+
+  const { error } = await sb.rpc('archive_contract', { p_contract_id: currentContractId })
+
+  btn.textContent = '確認封存'
+  btn.disabled = false
+
+  if (error) { alert('封存失敗：' + error.message); return }
+  closeModal('modal-archive-confirm')
+  location.hash = '#contracts'
+}
+
+// ── Milestones ──
+async function openMilestoneModal(milestoneId, contractId) {
+  currentMilestoneId = milestoneId
+  const form = $('form-milestone')
+  form.reset()
+  clearErr('milestone-error')
+
+  if (milestoneId) {
+    $('milestone-modal-title').textContent = '編輯里程碑'
+    const ms = window._currentMilestones?.find(m => m.id === milestoneId)
+    if (ms) {
+      Object.entries(ms).forEach(([k, v]) => {
+        const el = form.elements[k]
+        if (el && v !== null && v !== undefined) el.value = v
+      })
+    }
+  } else {
+    $('milestone-modal-title').textContent = '新增里程碑'
+    form.elements['contract_id'] && (form.elements['contract_id'].value = contractId)
+  }
+  $('modal-milestone').classList.remove('hidden')
+}
+
+async function submitMilestone(e) {
+  e.preventDefault()
+  const fd = new FormData(e.target)
+  const btn = e.target.querySelector('button[type=submit]')
+  btn.textContent = '儲存中...'
+  btn.disabled = true
+
+  const payload = {
+    contract_id:    currentContractId,
+    name:           fd.get('name'),
+    amount:         Number(fd.get('amount')) || 0,
+    pct:            fd.get('pct') ? Number(fd.get('pct')) : null,
+    direction:      fd.get('direction'),
+    condition_text: fd.get('condition_text') || null,
+    due_date:       fd.get('due_date') || null,
+    status:         fd.get('status'),
+    settled_date:   fd.get('settled_date') || null,
+    finance_ref:    fd.get('finance_ref') || null,
+    note:           fd.get('note') || null,
+    sort_order:     Number(fd.get('sort_order')) || 0,
+    updated_by:     authUser?.email
+  }
+
+  let error
+  if (currentMilestoneId) {
+    ;({ error } = await sb.from('contract_milestones').update(payload).eq('id', currentMilestoneId))
+  } else {
+    ;({ error } = await sb.from('contract_milestones').insert(payload))
+  }
+
+  btn.textContent = '儲存'
+  btn.disabled = false
+
+  if (error) { showErr('milestone-error', error.message); return }
+  closeModal('modal-milestone')
+  loadContractDetail(currentContractId)
+}
+
+// ── Versions / Upload ──
+let _uploadContractId = null
+let _uploadCo = null
+
+function openUploadModal(contractId, co, existingCount) {
+  _uploadContractId = contractId
+  _uploadCo = co
+  $('upload-file').value = ''
+  $('upload-version').value = `v${existingCount + 1}.0`
+  $('upload-note').value = ''
+  $('upload-progress').classList.add('hidden')
+  clearErr('upload-error')
+  $('modal-upload').classList.remove('hidden')
+}
+
+async function submitUpload() {
+  const file = $('upload-file').files[0]
+  const versionNo = $('upload-version').value.trim()
+  const note = $('upload-note').value.trim()
+
+  if (!file) { showErr('upload-error', '請選擇檔案'); return }
+  if (!versionNo) { showErr('upload-error', '請填寫版本號'); return }
+
+  const btn = $('modal-upload').querySelector('button.btn-primary')
+  btn.disabled = true
+  $('upload-progress').classList.remove('hidden')
+  clearErr('upload-error')
+
+  const storagePath = `${_uploadCo}/${_uploadContractId}/${versionNo}/${file.name}`
+
+  const { error: uploadErr } = await sb.storage
+    .from('contract-files')
+    .upload(storagePath, file, { upsert: false })
+
+  if (uploadErr) {
+    $('upload-progress').classList.add('hidden')
+    btn.disabled = false
+    showErr('upload-error', uploadErr.message)
+    return
+  }
+
+  const { error: insertErr } = await sb.from('contract_versions').insert({
+    contract_id:  _uploadContractId,
+    version_no:   versionNo,
+    note:         note || null,
+    storage_path: storagePath,
+    file_name:    file.name,
+    file_size:    file.size,
+    mime_type:    file.type,
+    uploaded_by:  authUser?.email
+  })
+
+  $('upload-progress').classList.add('hidden')
+  btn.disabled = false
+
+  if (insertErr) { showErr('upload-error', insertErr.message); return }
+
+  closeModal('modal-upload')
+  loadContractDetail(currentContractId)
+}
+
+async function downloadVersion(storagePath) {
+  const { data, error } = await sb.storage
+    .from('contract-files')
+    .createSignedUrl(storagePath, 3600)
+  if (error) { alert('下載失敗：' + error.message); return }
+  window.open(data.signedUrl, '_blank')
+}
+
+async function confirmDeleteVersion(versionId, storagePath) {
+  if (!confirm('確認刪除此附件？')) return
+
+  const { data: path, error: rpcErr } = await sb.rpc('delete_contract_version', { p_version_id: versionId })
+  if (rpcErr) { alert('刪除失敗：' + rpcErr.message); return }
+
+  await sb.storage.from('contract-files').remove([path || storagePath])
+  loadContractDetail(currentContractId)
+}
+
+// ── Categories ──
+async function ensureCategories() {
+  if (allCategories.length) return
+  const { data } = await sb.from('cntr_categories').select('*').order('sort_order')
+  allCategories = data || []
+}
+
+async function loadCategoriesView() {
+  const { data, error } = await sb.from('cntr_categories').select('*').order('sort_order')
+  if (error) return
+  allCategories = data || []
+  renderCategoriesTable()
+}
+
+function renderCategoriesTable() {
+  const tbody = $('categories-tbody')
+  if (!allCategories.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400">暫無分類</td></tr>`
+    return
+  }
+  tbody.innerHTML = allCategories.map(c => `
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td class="px-4 py-3 font-mono text-xs text-gray-600">${c.code}</td>
+      <td class="px-4 py-3 font-medium text-gray-900">${c.name}</td>
+      <td class="px-4 py-3 text-gray-500">${c.sort_order}</td>
+      <td class="px-4 py-3">
+        <span class="badge" style="${c.is_active ? 'background:#dcfce7;color:#15803d' : 'background:#f3f4f6;color:#6b7280'}">${c.is_active ? '啟用' : '停用'}</span>
+      </td>
+      <td class="px-4 py-3 text-right">
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="openCategoryModal('${c.id}')">編輯</button>
+        <button class="btn ${c.is_active ? 'btn-warning' : 'btn-primary'}" style="padding:4px 10px;font-size:12px;" onclick="toggleCategory('${c.id}', ${c.is_active})">${c.is_active ? '停用' : '啟用'}</button>
+      </td>
+    </tr>
+  `).join('')
+}
+
+function openCategoryModal(catId) {
+  editingCategoryId = catId || null
+  const form = $('form-category')
+  form.reset()
+  clearErr('category-error')
+
+  if (catId) {
+    $('category-modal-title').textContent = '編輯分類'
+    const cat = allCategories.find(c => c.id === catId)
+    if (cat) {
+      form.elements['code'].value = cat.code
+      form.elements['name'].value = cat.name
+      form.elements['sort_order'].value = cat.sort_order
+    }
+  } else {
+    $('category-modal-title').textContent = '新增分類'
+  }
+  $('modal-category').classList.remove('hidden')
+}
+
+async function submitCategory(e) {
+  e.preventDefault()
+  const fd = new FormData(e.target)
+  const btn = e.target.querySelector('button[type=submit]')
+  btn.textContent = '儲存中...'
+  btn.disabled = true
+
+  const payload = {
+    code:       fd.get('code'),
+    name:       fd.get('name'),
+    sort_order: Number(fd.get('sort_order')) || 0
+  }
+
+  let error
+  if (editingCategoryId) {
+    ;({ error } = await sb.from('cntr_categories').update(payload).eq('id', editingCategoryId))
+  } else {
+    ;({ error } = await sb.from('cntr_categories').insert(payload))
+  }
+
+  btn.textContent = '儲存'
+  btn.disabled = false
+
+  if (error) { showErr('category-error', error.message); return }
+  closeModal('modal-category')
+  loadCategoriesView()
+}
+
+async function toggleCategory(id, isActive) {
+  await sb.from('cntr_categories').update({ is_active: !isActive }).eq('id', id)
+  loadCategoriesView()
+}
+
+// ── Users ──
+async function loadUsersView() {
+  const { data, error } = await sb.from('cntr_users').select('*').order('role').order('name')
+  if (error) return
+
+  const tbody = $('users-tbody')
+  if (!data?.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400">暫無使用者</td></tr>`
+    return
+  }
+
+  tbody.innerHTML = data.map(u => `
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td class="px-4 py-3 font-medium text-gray-900">${u.name}</td>
+      <td class="px-4 py-3 text-gray-600 text-sm">${u.email}</td>
+      <td class="px-4 py-3">
+        <span class="badge" style="${u.role === 'gm' ? 'background:#ede9fe;color:#6d28d9' : 'background:#f0fdf4;color:#15803d'}">${u.role === 'gm' ? '總管理者' : '經辦人員'}</span>
+      </td>
+      <td class="px-4 py-3 text-sm text-gray-600">${u.role === 'gm' ? '全部' : (u.co || []).map(c => coName(c)).join('、') || '-'}</td>
+      <td class="px-4 py-3">
+        <span class="badge" style="${u.is_active ? 'background:#dcfce7;color:#15803d' : 'background:#fee2e2;color:#dc2626'}">${u.is_active ? '啟用' : '停用'}</span>
+      </td>
+    </tr>
+  `).join('')
+}
+
+// ── Modal helpers ──
+function closeModal(id) {
+  $(id).classList.add('hidden')
+}
+
+document.querySelectorAll('.modal-bg').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) closeModal(el.id)
+  })
+})
+
+// ── Init ──
+async function init() {
+  await ensureCategories()
+}
+
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (!session) showLogin()
+})
+</script>
+</body>
+</html>
