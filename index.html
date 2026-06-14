@@ -1142,7 +1142,10 @@ const ATTACH_ALLOWED_TYPES = [...SCAN_ALLOWED_TYPES, 'application/msword', 'appl
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 
 function sanitizeFilename(name) {
-  return name.replace(/[/\\:*?"<>|]/g, '_')
+  return name
+    .replace(/[/\\:*?"<>|]/g, '_')
+    .replace(/[\s()[\]{}]+/g, '_')
+    .replace(/_+/g, '_')
 }
 
 function validateFile(file, allowedTypes) {
