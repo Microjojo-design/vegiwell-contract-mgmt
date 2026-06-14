@@ -521,16 +521,19 @@ const SUPABASE_URL = 'https://dqxdgxbebumxtbyvbxkn.supabase.co'
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxeGRneGJlYnVteHRieXZieGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NDEwMzMsImV4cCI6MjA5MTUxNzAzM30.PF-nVLU6oFcsArQveJF6jhdrN4LnYfzug3-SgCa0n5o'
 
 // 清除過期 session，避免 SDK 初始化時進入 token refresh 鎖定狀態
+// 使用專屬 storageKey，與同網域其他 Supabase 應用（group-finance 等）隔離
+const CNTR_STORAGE_KEY = 'cntr-mgmt-auth'
 try {
-  const _key = 'sb-dqxdgxbebumxtbyvbxkn-auth-token'
-  const _raw = localStorage.getItem(_key)
+  const _raw = localStorage.getItem(CNTR_STORAGE_KEY)
   if (_raw) {
     const _s = JSON.parse(_raw)
-    if (!_s?.expires_at || _s.expires_at * 1000 < Date.now()) localStorage.removeItem(_key)
+    if (!_s?.expires_at || _s.expires_at * 1000 < Date.now()) localStorage.removeItem(CNTR_STORAGE_KEY)
   }
 } catch (_) {}
 
-const sb = window.supabase.createClient(SUPABASE_URL, ANON_KEY)
+const sb = window.supabase.createClient(SUPABASE_URL, ANON_KEY, {
+  auth: { storageKey: CNTR_STORAGE_KEY }
+})
 
 // ── State ──
 let authUser = null
