@@ -599,12 +599,18 @@ function clearErr(elId) {
 }
 
 // ── Auth ──
+// onAuthStateChange 只負責 INITIAL_SESSION（頁面重載時恢復登入狀態）
+// 主動登入由 form submit 直接處理，避免 Supabase lock 競態
 sb.auth.onAuthStateChange(async (event, session) => {
-  if (session?.user) {
-    authUser = session.user
-    await loadUserProfile()
-    showApp()
-  } else {
+  if (event === 'INITIAL_SESSION') {
+    if (session?.user) {
+      authUser = session.user
+      await loadUserProfile()
+      showApp()
+    } else {
+      showLogin()
+    }
+  } else if (event === 'SIGNED_OUT') {
     authUser = null
     userProfile = null
     showLogin()
@@ -626,17 +632,35 @@ $('login-form').addEventListener('submit', async e => {
   const btn = e.target.querySelector('button[type=submit]')
   btn.textContent = '登入中...'
   btn.disabled = true
-  const { error } = await sb.auth.signInWithPassword({ email, password })
-  btn.textContent = '登入'
-  btn.disabled = false
-  if (error) {
-    $('login-error').textContent = '帳號或密碼錯誤'
-    $('login-error').classList.remove('hidden')
+  clearErr('login-error')
+  try {
+    // 直接呼叫 Supabase REST API，完全繞過 SDK 的 Web Locks 機制
+    const res = await Promise.race([
+      fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'apikey': ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
+    ])
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error_description || errData.msg || 'auth_error')
+    }
+    const session = await res.json()
+    localStorage.setItem(CNTR_STORAGE_KEY, JSON.stringify(session))
+    location.reload()
+  } catch (err) {
+    const msg = err.message
+    showErr('login-error', msg === 'timeout' ? '連線逾時，請重試' : '帳號或密碼錯誤')
+    btn.textContent = '登入'
+    btn.disabled = false
   }
 })
 
 async function doSignOut() {
-  await sb.auth.signOut()
+  localStorage.removeItem(CNTR_STORAGE_KEY)
+  sb.auth.signOut().catch(() => {})
   location.reload()
 }
 
