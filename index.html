@@ -1178,8 +1178,11 @@ function validateFile(file, allowedTypes) {
 }
 
 async function uploadContractVersion({ contractId, co, file, versionNo, note }) {
-  const safeName = sanitizeFilename(file.name)
-  const storagePath = `${co}/${contractId}/${versionNo}/${safeName}`
+  const displayName = sanitizeFilename(file.name)
+  // Storage path 只用 ASCII（timestamp + 副檔名），避免中文檔名造成 Invalid key
+  const ext = file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '')
+  const safeStorageName = `${Date.now()}.${ext}`
+  const storagePath = `${co}/${contractId}/${versionNo}/${safeStorageName}`
 
   const { error: uploadErr } = await sb.storage
     .from('contract-files')
@@ -1192,7 +1195,7 @@ async function uploadContractVersion({ contractId, co, file, versionNo, note }) 
     version_no:   versionNo,
     note:         note || null,
     storage_path: storagePath,
-    file_name:    safeName,
+    file_name:    displayName,   // 原始顯示用檔名存 DB
     file_size:    file.size,
     mime_type:    file.type,
     uploaded_by:  authUser?.email
