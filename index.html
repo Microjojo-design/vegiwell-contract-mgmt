@@ -331,6 +331,11 @@
           <label class="form-label">備註</label>
           <textarea name="notes" rows="2" placeholder="其他備注事項..."></textarea>
         </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">合約掃描檔（選填）</label>
+          <input type="file" id="create-scan-file" accept=".pdf,.jpg,.jpeg,.png" style="padding:6px 12px; cursor:pointer;">
+          <div style="font-size:12px; color:#9ca3af; margin-top:4px;">支援 PDF / JPG / PNG，上限 20MB，上傳後可於附件分頁查看</div>
+        </div>
       </div>
       <div id="create-contract-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
       <div class="flex justify-end gap-3">
@@ -944,37 +949,63 @@ async function submitCreateContract(e) {
   e.preventDefault()
   const form = e.target
   const fd = new FormData(form)
+  const scanFile = $('create-scan-file').files[0]
+  const co = fd.get('co')
+
+  if (scanFile) {
+    try {
+      validateFile(scanFile, SCAN_ALLOWED_TYPES)
+    } catch (err) {
+      showErr('create-contract-error', err.message)
+      return
+    }
+  }
+
   const btn = form.querySelector('button[type=submit]')
   btn.textContent = '建立中...'
   btn.disabled = true
 
-  const { data, error } = await sb.rpc('create_contract', {
-    p_co:              fd.get('co'),
-    p_title:           fd.get('title'),
-    p_category_id:     fd.get('category_id'),
-    p_party_a:         fd.get('party_a'),
-    p_party_b:         fd.get('party_b'),
-    p_party_b_contact: fd.get('party_b_contact') || null,
-    p_our_party_role:  fd.get('our_party_role'),
-    p_start_date:      fd.get('start_date'),
-    p_end_date:        fd.get('end_date'),
-    p_amount:          Number(fd.get('amount')) || 0,
-    p_currency:        fd.get('currency'),
-    p_officer:         fd.get('officer'),
-    p_officer_email:   fd.get('officer_email'),
-    p_notes:           fd.get('notes') || null
-  })
-
-  btn.textContent = '建立合約'
-  btn.disabled = false
-
-  if (error) {
-    showErr('create-contract-error', error.message)
-    return
+  let newId
+  try {
+    const { data, error } = await sb.rpc('create_contract', {
+      p_co:              co,
+      p_title:           fd.get('title'),
+      p_category_id:     fd.get('category_id'),
+      p_party_a:         fd.get('party_a'),
+      p_party_b:         fd.get('party_b'),
+      p_party_b_contact: fd.get('party_b_contact') || null,
+      p_our_party_role:  fd.get('our_party_role'),
+      p_start_date:      fd.get('start_date'),
+      p_end_date:        fd.get('end_date'),
+      p_amount:          Number(fd.get('amount')) || 0,
+      p_currency:        fd.get('currency'),
+      p_officer:         fd.get('officer'),
+      p_officer_email:   fd.get('officer_email'),
+      p_notes:           fd.get('notes') || null
+    })
+    if (error) { showErr('create-contract-error', error.message); return }
+    newId = data
+  } finally {
+    btn.textContent = '建立合約'
+    btn.disabled = false
   }
 
   closeModal('modal-create-contract')
-  location.hash = `contract/${data}`
+  location.hash = `contract/${newId}`
+
+  if (scanFile) {
+    btn.textContent = '上傳中...'
+    btn.disabled = true
+    try {
+      await uploadContractVersion({ contractId: newId, co, file: scanFile, versionNo: 'v1.0', note: '合約掃描檔' })
+      loadContractDetail(newId)
+    } catch (err) {
+      alert(`合約已建立，但掃描檔上傳失敗：${err.message}\n\n可至附件分頁重試。`)
+    } finally {
+      btn.textContent = '建立合約'
+      btn.disabled = false
+    }
+  }
 }
 
 // ── Edit End Date ──
@@ -1091,6 +1122,46 @@ async function submitMilestone(e) {
 let _uploadContractId = null
 let _uploadCo = null
 
+const SCAN_ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+const ATTACH_ALLOWED_TYPES = [...SCAN_ALLOWED_TYPES, 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+const MAX_FILE_SIZE = 20 * 1024 * 1024
+
+function sanitizeFilename(name) {
+  return name.replace(/[/\\:*?"<>|]/g, '_')
+}
+
+function validateFile(file, allowedTypes) {
+  if (!allowedTypes.includes(file.type)) throw new Error('不支援的檔案格式')
+  if (file.size > MAX_FILE_SIZE) throw new Error('檔案大小不可超過 20MB')
+}
+
+async function uploadContractVersion({ contractId, co, file, versionNo, note }) {
+  const safeName = sanitizeFilename(file.name)
+  const storagePath = `${co}/${contractId}/${versionNo}/${safeName}`
+
+  const { error: uploadErr } = await sb.storage
+    .from('contract-files')
+    .upload(storagePath, file, { upsert: false })
+
+  if (uploadErr) throw new Error(uploadErr.message)
+
+  const { error: insertErr } = await sb.from('contract_versions').insert({
+    contract_id:  contractId,
+    version_no:   versionNo,
+    note:         note || null,
+    storage_path: storagePath,
+    file_name:    safeName,
+    file_size:    file.size,
+    mime_type:    file.type,
+    uploaded_by:  authUser?.email
+  })
+
+  if (insertErr) {
+    await sb.storage.from('contract-files').remove([storagePath])
+    throw new Error(insertErr.message)
+  }
+}
+
 function openUploadModal(contractId, co, existingCount) {
   _uploadContractId = contractId
   _uploadCo = co
@@ -1110,42 +1181,28 @@ async function submitUpload() {
   if (!file) { showErr('upload-error', '請選擇檔案'); return }
   if (!versionNo) { showErr('upload-error', '請填寫版本號'); return }
 
+  try {
+    validateFile(file, ATTACH_ALLOWED_TYPES)
+  } catch (err) {
+    showErr('upload-error', err.message)
+    return
+  }
+
   const btn = $('modal-upload').querySelector('button.btn-primary')
   btn.disabled = true
   $('upload-progress').classList.remove('hidden')
   clearErr('upload-error')
 
-  const storagePath = `${_uploadCo}/${_uploadContractId}/${versionNo}/${file.name}`
-
-  const { error: uploadErr } = await sb.storage
-    .from('contract-files')
-    .upload(storagePath, file, { upsert: false })
-
-  if (uploadErr) {
+  try {
+    await uploadContractVersion({ contractId: _uploadContractId, co: _uploadCo, file, versionNo, note })
+    closeModal('modal-upload')
+    loadContractDetail(currentContractId)
+  } catch (err) {
+    showErr('upload-error', err.message)
+  } finally {
     $('upload-progress').classList.add('hidden')
     btn.disabled = false
-    showErr('upload-error', uploadErr.message)
-    return
   }
-
-  const { error: insertErr } = await sb.from('contract_versions').insert({
-    contract_id:  _uploadContractId,
-    version_no:   versionNo,
-    note:         note || null,
-    storage_path: storagePath,
-    file_name:    file.name,
-    file_size:    file.size,
-    mime_type:    file.type,
-    uploaded_by:  authUser?.email
-  })
-
-  $('upload-progress').classList.add('hidden')
-  btn.disabled = false
-
-  if (insertErr) { showErr('upload-error', insertErr.message); return }
-
-  closeModal('modal-upload')
-  loadContractDetail(currentContractId)
 }
 
 async function downloadVersion(storagePath) {
