@@ -612,6 +612,7 @@ $('login-form').addEventListener('submit', async e => {
   const btn = e.target.querySelector('button[type=submit]')
   btn.textContent = '登入中...'
   btn.disabled = true
+  await sb.auth.signOut()
   const { error } = await sb.auth.signInWithPassword({ email, password })
   btn.textContent = '登入'
   btn.disabled = false
