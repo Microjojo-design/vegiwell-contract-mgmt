@@ -569,6 +569,7 @@ const OUR_ROLE = { party_a: '甲方（我方）', party_b: '乙方（我方）',
 const $ = id => document.getElementById(id)
 const fmt = n => (n != null && n !== '') ? `NT$ ${Number(n).toLocaleString()}` : '-'
 const fmtDate = d => d ? d.slice(0, 10) : '-'
+const esc = s => String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')
 const coName = co => CO[co]?.name || co
 const coBadge = co => {
   const c = CO[co]
@@ -621,7 +622,7 @@ async function loadUserProfile() {
   const { data } = await sb.from('cntr_users').select('*').eq('user_id', authUser.id).single()
   userProfile = data
   if (userProfile) {
-    $('user-info-sidebar').innerHTML = `<b style="color:#e2e8f0">${userProfile.name}</b><br>${userProfile.role === 'gm' ? '總管理者' : '經辦人員'}`
+    $('user-info-sidebar').innerHTML = `<b style="color:#e2e8f0">${esc(userProfile.name)}</b><br>${userProfile.role === 'gm' ? '總管理者' : '經辦人員'}`
   }
 }
 
@@ -770,11 +771,11 @@ function renderContractTableFrom(list) {
   }
   tbody.innerHTML = list.map(c => `
     <tr class="clickable" style="border-bottom:1px solid #f3f4f6;" onclick="location.hash='contract/${c.id}'">
-      <td class="px-4 py-3 font-mono text-xs text-gray-500">${c.no}</td>
-      <td class="px-4 py-3 text-sm font-medium text-gray-900" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title}</td>
+      <td class="px-4 py-3 font-mono text-xs text-gray-500">${esc(c.no)}</td>
+      <td class="px-4 py-3 text-sm font-medium text-gray-900" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.title)}</td>
       <td class="px-4 py-3">${coBadge(c.co)}</td>
-      <td class="px-4 py-3 text-xs text-gray-500">${c.cntr_categories?.name || '-'}</td>
-      <td class="px-4 py-3 text-sm text-gray-600" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.party_b}</td>
+      <td class="px-4 py-3 text-xs text-gray-500">${esc(c.cntr_categories?.name || '-')}</td>
+      <td class="px-4 py-3 text-sm text-gray-600" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.party_b)}</td>
       <td class="px-4 py-3 text-sm text-gray-600">${fmtDate(c.end_date)}</td>
       <td class="px-4 py-3">${statusBadge(c.status)}</td>
       <td class="px-4 py-3 text-sm text-gray-600 text-right">${fmt(c.amount)}</td>
@@ -814,11 +815,11 @@ function renderContractDetail(c, milestones, versions, logs) {
       <div class="flex items-start justify-between">
         <div>
           <div class="flex items-center gap-3 mb-2">
-            <span class="font-mono text-sm text-gray-500">${c.no}</span>
+            <span class="font-mono text-sm text-gray-500">${esc(c.no)}</span>
             ${coBadge(c.co)}
             ${isArchived ? '<span class="badge" style="background:#f3f4f6;color:#6b7280">已封存</span>' : statusBadge(c.status || 'active')}
           </div>
-          <h1 class="text-2xl font-bold text-gray-900">${c.title}</h1>
+          <h1 class="text-2xl font-bold text-gray-900">${esc(c.title)}</h1>
           <div class="text-sm text-gray-500 mt-1">分類：${c.cntr_categories?.name || '-'} ・ 到期：${fmtDate(c.end_date)} ・ 剩餘 ${c.days_remaining ?? '-'} 天</div>
         </div>
         ${!isArchived ? `
@@ -882,7 +883,7 @@ function renderContractDetail(c, milestones, versions, logs) {
               </tr></thead>
               <tbody>${milestones.map(m => `
                 <tr style="border-bottom:1px solid #f3f4f6;">
-                  <td class="px-4 py-3 font-medium text-gray-900">${m.name}<br><span class="text-xs text-gray-400">${m.condition_text || ''}</span></td>
+                  <td class="px-4 py-3 font-medium text-gray-900">${esc(m.name)}<br><span class="text-xs text-gray-400">${esc(m.condition_text || '')}</span></td>
                   <td class="px-4 py-3 text-right text-gray-700">${fmt(m.amount)}${m.pct ? ` <span class="text-xs text-gray-400">(${m.pct}%)</span>` : ''}</td>
                   <td class="px-4 py-3 text-gray-600">${DIRECTION[m.direction] || m.direction}</td>
                   <td class="px-4 py-3 text-gray-600">${fmtDate(m.due_date)}</td>
@@ -916,9 +917,9 @@ function renderContractDetail(c, milestones, versions, logs) {
               <tbody>${versions.map(v => `
                 <tr style="border-bottom:1px solid #f3f4f6;">
                   <td class="px-4 py-3 font-mono text-xs text-indigo-600">${v.version_no}</td>
-                  <td class="px-4 py-3 text-gray-700">${v.file_name || '-'}</td>
-                  <td class="px-4 py-3 text-gray-500 text-xs">${v.note || '-'}</td>
-                  <td class="px-4 py-3 text-gray-500 text-xs">${v.uploaded_by || '-'}</td>
+                  <td class="px-4 py-3 text-gray-700">${esc(v.file_name || '-')}</td>
+                  <td class="px-4 py-3 text-gray-500 text-xs">${esc(v.note || '-')}</td>
+                  <td class="px-4 py-3 text-gray-500 text-xs">${esc(v.uploaded_by || '-')}</td>
                   <td class="px-4 py-3 text-gray-500 text-xs">${fmtDate(v.uploaded_at)}</td>
                   <td class="px-4 py-3 text-right">
                     <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="downloadVersion('${v.storage_path}')">下載</button>
@@ -938,9 +939,9 @@ function renderContractDetail(c, milestones, versions, logs) {
               <div class="flex gap-3 text-sm py-2 border-b border-gray-50">
                 <div class="text-gray-400 text-xs whitespace-nowrap pt-0.5">${fmtDate(l.created_at)}</div>
                 <div>
-                  <span class="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-2">${l.action}</span>
-                  <span class="text-gray-700">${l.detail || ''}</span>
-                  ${l.actor ? `<span class="text-gray-400 text-xs ml-2">by ${l.actor}</span>` : ''}
+                  <span class="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-2">${esc(l.action)}</span>
+                  <span class="text-gray-700">${esc(l.detail || '')}</span>
+                  ${l.actor ? `<span class="text-gray-400 text-xs ml-2">by ${esc(l.actor)}</span>` : ''}
                 </div>
               </div>`).join('')}
             </div>`
@@ -955,7 +956,7 @@ function renderContractDetail(c, milestones, versions, logs) {
 }
 
 function infoRow(label, value) {
-  return `<div><div style="font-size:12px;color:#9ca3af;font-weight:500;margin-bottom:2px;">${label}</div><div style="font-size:14px;color:#1f2937;">${value || '-'}</div></div>`
+  return `<div><div style="font-size:12px;color:#9ca3af;font-weight:500;margin-bottom:2px;">${label}</div><div style="font-size:14px;color:#1f2937;">${esc(value) || '-'}</div></div>`
 }
 
 function showTab(tab, btn) {
@@ -1290,9 +1291,9 @@ function renderCategoriesTable() {
   }
   tbody.innerHTML = allCategories.map(c => `
     <tr style="border-bottom:1px solid #f3f4f6;">
-      <td class="px-4 py-3 font-mono text-xs text-gray-600">${c.code}</td>
-      <td class="px-4 py-3 font-medium text-gray-900">${c.name}</td>
-      <td class="px-4 py-3 text-gray-500">${c.sort_order}</td>
+      <td class="px-4 py-3 font-mono text-xs text-gray-600">${esc(c.code)}</td>
+      <td class="px-4 py-3 font-medium text-gray-900">${esc(c.name)}</td>
+      <td class="px-4 py-3 text-gray-500">${esc(c.sort_order)}</td>
       <td class="px-4 py-3">
         <span class="badge" style="${c.is_active ? 'background:#dcfce7;color:#15803d' : 'background:#f3f4f6;color:#6b7280'}">${c.is_active ? '啟用' : '停用'}</span>
       </td>
@@ -1370,8 +1371,8 @@ async function loadUsersView() {
 
   tbody.innerHTML = data.map(u => `
     <tr style="border-bottom:1px solid #f3f4f6;">
-      <td class="px-4 py-3 font-medium text-gray-900">${u.name}</td>
-      <td class="px-4 py-3 text-gray-600 text-sm">${u.email}</td>
+      <td class="px-4 py-3 font-medium text-gray-900">${esc(u.name)}</td>
+      <td class="px-4 py-3 text-gray-600 text-sm">${esc(u.email)}</td>
       <td class="px-4 py-3">
         <span class="badge" style="${u.role === 'gm' ? 'background:#ede9fe;color:#6d28d9' : 'background:#f0fdf4;color:#15803d'}">${u.role === 'gm' ? '總管理者' : '經辦人員'}</span>
       </td>
