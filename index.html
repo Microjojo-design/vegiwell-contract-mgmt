@@ -787,11 +787,12 @@ function renderContractTableFrom(list) {
 async function loadContractDetail(id) {
   $('contract-detail-content').innerHTML = `<div class="text-center py-16 text-gray-400">載入中...</div>`
 
-  const [{ data: contract }, { data: milestones }, { data: versions }, { data: logs }] = await Promise.all([
+  const [{ data: contract }, { data: milestones }, { data: versions }, { data: logs }, reviewsRes] = await Promise.all([
     sb.from('contracts').select('*, cntr_categories(name, code)').eq('id', id).single(),
     sb.from('contract_milestones').select('*').eq('contract_id', id).order('sort_order').order('created_at' , { referencedTable: 'contract_milestones', ascending: true }),
     sb.from('contract_versions').select('*').eq('contract_id', id).is('archived_at', null).order('uploaded_at', { ascending: false }),
-    sb.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }).limit(50)
+    sb.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }).limit(50),
+    sb.from('contract_reviews').select('*').eq('contract_id', id).order('created_at', { ascending: false })
   ])
 
   if (!contract) {
@@ -799,10 +800,12 @@ async function loadContractDetail(id) {
     return
   }
 
-  renderContractDetail(contract, milestones || [], versions || [], logs || [])
+  // contract_reviews 表未建立時（42P01/404）容錯為空陣列
+  const reviews = reviewsRes.error ? [] : (reviewsRes.data || [])
+  renderContractDetail(contract, milestones || [], versions || [], logs || [], reviews)
 }
 
-function renderContractDetail(c, milestones, versions, logs) {
+function renderContractDetail(c, milestones, versions, logs, reviews = []) {
   const isArchived = !!c.archived_at
 
   $('contract-detail-content').innerHTML = `
@@ -841,6 +844,7 @@ function renderContractDetail(c, milestones, versions, logs) {
         <button class="tab-btn active" onclick="showTab('info', this)">基本資訊</button>
         <button class="tab-btn" onclick="showTab('milestones', this)">里程碑 (${milestones.length})</button>
         <button class="tab-btn" onclick="showTab('versions', this)">附件 (${versions.length})</button>
+        <button class="tab-btn" onclick="showTab('ai', this)">AI 審查 (${reviews.length})</button>
         <button class="tab-btn" onclick="showTab('logs', this)">稽核日誌</button>
       </div>
 
@@ -931,6 +935,14 @@ function renderContractDetail(c, milestones, versions, logs) {
         }
       </div>
 
+      <!-- Tab: AI 審查 -->
+      <div id="tab-ai" class="hidden p-6">
+        ${reviews.length === 0
+          ? `<div class="text-center py-12 text-gray-400">尚無 AI 審查紀錄<div class="text-xs mt-2">上傳合約附件後，系統於 15 分鐘內自動審查</div></div>`
+          : reviews.map(r => renderReview(r, versions)).join('')
+        }
+      </div>
+
       <!-- Tab: 稽核日誌 -->
       <div id="tab-logs" class="hidden p-6">
         ${logs.length === 0
@@ -959,8 +971,47 @@ function infoRow(label, value) {
   return `<div><div style="font-size:12px;color:#9ca3af;font-weight:500;margin-bottom:2px;">${label}</div><div style="font-size:14px;color:#1f2937;">${esc(value) || '-'}</div></div>`
 }
 
+// AI 審查紀錄。report_md 為 LLM 產出＝不可信輸入，一律 esc() 後以 pre 呈現
+const REVIEW_RISK = {
+  red:    { icon: '🔴', label: '高風險', bg: '#fef2f2', color: '#b91c1c' },
+  yellow: { icon: '🟡', label: '修改後可簽', bg: '#fffbeb', color: '#b45309' },
+  green:  { icon: '🟢', label: '可簽署', bg: '#f0fdf4', color: '#15803d' },
+}
+const REVIEW_TYPE = { channel: '通路/平台', kol: 'KOL/網紅', other: '其他' }
+function renderReview(r, versions) {
+  const ver = versions.find(v => v.id === r.version_id)
+  const fileName = ver ? (ver.file_name || ver.version_no) : '（版次已刪除）'
+  if (r.status !== 'done') {
+    const msg = r.status === 'processing' ? '審查中…' : `審查失敗（已重試 ${r.retry_count} 次）：${esc(r.error || '')}`
+    return `<div class="mb-4 p-4 rounded-lg border border-gray-100 bg-gray-50 text-sm text-gray-500">
+      <span class="font-medium text-gray-700">${esc(fileName)}</span> — ${msg}</div>`
+  }
+  const risk = REVIEW_RISK[r.risk_level] || REVIEW_RISK.yellow
+  const detailId = 'review-detail-' + r.id
+  return `
+    <div class="mb-4 rounded-lg border border-gray-100 overflow-hidden">
+      <div class="p-4" style="background:${risk.bg};">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <span class="font-semibold" style="color:${risk.color};">${risk.icon} ${risk.label}</span>
+            <span class="badge ml-2" style="background:#fff;color:#6b7280;">${REVIEW_TYPE[r.contract_type] || esc(r.contract_type || '-')}</span>
+            <span class="text-xs text-gray-500 ml-2">${esc(fileName)}・${fmtDate(r.reviewed_at)}・${esc(r.model || '')}</span>
+          </div>
+          <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;"
+            onclick="const el=$('${detailId}'); el.classList.toggle('hidden'); this.textContent=el.classList.contains('hidden')?'展開報告':'收合報告'">展開報告</button>
+        </div>
+        <div class="text-sm text-gray-700 mt-2">${esc(r.summary || '')}</div>
+        ${r.risk_level === 'red' ? `<div class="text-xs mt-1" style="color:${risk.color};">⚠️ 高風險：建議另做第二意見交叉驗證，重大合約簽署前應由律師複核</div>` : ''}
+      </div>
+      <div id="${detailId}" class="hidden p-4 bg-white" style="border-top:1px solid #f3f4f6;">
+        <pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.7;color:#374151;margin:0;">${esc(r.report_md || '')}</pre>
+        <div class="text-xs text-gray-400 mt-3">本報告為 AI 初審意見，不構成正式法律意見。</div>
+      </div>
+    </div>`
+}
+
 function showTab(tab, btn) {
-  const tabs = ['info', 'milestones', 'versions', 'logs']
+  const tabs = ['info', 'milestones', 'versions', 'ai', 'logs']
   tabs.forEach(t => {
     const el = $('tab-' + t)
     if (el) el.classList.toggle('hidden', t !== tab)
