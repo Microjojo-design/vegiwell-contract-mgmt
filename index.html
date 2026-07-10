@@ -22,6 +22,10 @@
   .tab-btn.active { border-color:#BA693D; color:#BA693D; }
   .tab-btn:hover:not(.active) { color:#374151; }
   .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .ai-filled { background:#FEF9C3 !important; }
+  #ai-extract-status.ai-info { color:#4338ca; background:#eef2ff; }
+  #ai-extract-status.ai-error { color:#dc2626; background:#fef2f2; }
+  #ai-extract-status.ai-success { color:#166534; background:#f0fdf4; }
   .modal-box { background:#fff; border-radius:12px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
   input,select,textarea { border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; width:100%; outline:none; transition:border .15s; }
   input:focus,select:focus,textarea:focus { border-color:#BA693D; box-shadow:0 0 0 3px rgba(186,105,61,.15); }
@@ -333,8 +337,12 @@
         </div>
         <div class="form-group" style="grid-column:span 2;">
           <label class="form-label">合約掃描檔（選填）</label>
-          <input type="file" id="create-scan-file" accept=".pdf,.jpg,.jpeg,.png" style="padding:6px 12px; cursor:pointer;">
-          <div style="font-size:12px; color:#9ca3af; margin-top:4px;">支援 PDF / JPG / PNG，上限 20MB，上傳後可於附件分頁查看</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="file" id="create-scan-file" accept=".pdf,.jpg,.jpeg,.png" style="padding:6px 12px; cursor:pointer; flex:1;">
+            <button type="button" id="btn-ai-extract" class="btn btn-secondary" style="white-space:nowrap;" onclick="aiExtractContract()">🤖 AI 辨識並填入</button>
+          </div>
+          <div style="font-size:12px; color:#9ca3af; margin-top:4px;">支援 PDF / JPG / PNG，上限 20MB，上傳後可於附件分頁查看；AI 辨識僅支援 PDF（上限 15MB）</div>
+          <div id="ai-extract-status" class="hidden" style="font-size:13px; padding:8px 12px; border-radius:8px; margin-top:8px; white-space:pre-line;"></div>
         </div>
       </div>
       <div id="create-contract-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
@@ -1033,8 +1041,129 @@ async function openCreateContract() {
   })
   $('form-create-contract').reset()
   clearErr('create-contract-error')
+  clearAiFilled()
   $('modal-create-contract').classList.remove('hidden')
 }
+
+// ── AI 辨識填表 ──
+const AI_EXTRACT_URL = `${SUPABASE_URL}/functions/v1/contract-extract`
+const AI_MAX_PDF_SIZE = 15 * 1024 * 1024
+
+function aiStatus(msg, type) {
+  const el = $('ai-extract-status')
+  el.textContent = msg
+  el.className = `ai-${type}`
+}
+
+function clearAiFilled() {
+  document.querySelectorAll('#form-create-contract .ai-filled').forEach(el => el.classList.remove('ai-filled'))
+  const el = $('ai-extract-status')
+  el.textContent = ''
+  el.className = 'hidden'
+}
+
+function getAccessToken() {
+  try { return JSON.parse(localStorage.getItem(CNTR_STORAGE_KEY))?.access_token || null } catch { return null }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1])
+    reader.onerror = () => reject(new Error('讀取檔案失敗'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function aiExtractContract() {
+  const file = $('create-scan-file').files[0]
+  if (!file) { aiStatus('請先選擇合約 PDF 檔案', 'error'); return }
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    aiStatus('AI 辨識目前僅支援 PDF 檔案', 'error'); return
+  }
+  if (file.size > AI_MAX_PDF_SIZE) { aiStatus('PDF 超過 15MB，請壓縮後再試', 'error'); return }
+  const token = getAccessToken()
+  if (!token) { aiStatus('登入狀態已失效，請重新登入', 'error'); return }
+
+  const btn = $('btn-ai-extract')
+  btn.disabled = true
+  btn.textContent = '辨識中...'
+  aiStatus('AI 辨識中，約需 30～90 秒，請勿關閉視窗...', 'info')
+  try {
+    await ensureCategories()
+    const pdfBase64 = await fileToBase64(file)
+    const res = await fetch(AI_EXTRACT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY
+      },
+      body: JSON.stringify({
+        pdf_base64: pdfBase64,
+        filename: file.name,
+        categories: allCategories.filter(c => c.is_active).map(c => ({ code: c.code, name: c.name }))
+      })
+    })
+    const payload = await res.json().catch(() => null)
+    if (!res.ok || !payload?.ok) {
+      aiStatus(payload?.error || `AI 辨識失敗（${res.status}），已填欄位不受影響`, 'error')
+      return
+    }
+    applyAiData(payload.data)
+  } catch (err) {
+    aiStatus(`AI 辨識失敗：${err.message}，已填欄位不受影響`, 'error')
+  } finally {
+    btn.disabled = false
+    btn.textContent = '🤖 AI 辨識並填入'
+  }
+}
+
+function applyAiData(data) {
+  const form = $('form-create-contract')
+  let filled = 0
+  const setVal = (name, value) => {
+    if (value == null || value === '') return
+    const el = form.elements[name]
+    if (!el) return
+    if (el.tagName === 'SELECT') {
+      const v = String(value)
+      if (![...el.options].some(o => o.value === v)) return
+      el.value = v
+    } else {
+      el.value = value
+    }
+    el.classList.add('ai-filled')
+    filled++
+  }
+  setVal('title', data.title)
+  setVal('co', data.co)
+  setVal('party_a', data.party_a)
+  setVal('party_b', data.party_b)
+  setVal('party_b_contact', data.party_b_contact)
+  setVal('our_party_role', data.our_party_role)
+  setVal('start_date', data.start_date)
+  setVal('end_date', data.end_date)
+  setVal('amount', data.amount)
+  setVal('currency', data.currency)
+  setVal('officer', data.officer)
+  setVal('officer_email', data.officer_email)
+  setVal('notes', data.notes)
+  if (data.category_code) {
+    const cat = allCategories.find(c => c.is_active && c.code === data.category_code)
+    if (cat) setVal('category_id', cat.id)
+  }
+  let msg = `✅ AI 已填入 ${filled} 個欄位（淡黃色標記），請逐一確認後再按「建立合約」`
+  const review = (data.needs_review || []).filter(x => typeof x === 'string')
+  if (review.length) msg += `\n⚠️ 需人工確認：${review.join('、')}`
+  aiStatus(msg, filled > 0 ? 'success' : 'error')
+  if (filled === 0) aiStatus('AI 未能辨識出任何欄位，請人工填寫', 'error')
+}
+
+// 使用者編輯後移除 AI 標記
+$('form-create-contract').addEventListener('input', e => {
+  if (e.target.classList) e.target.classList.remove('ai-filled')
+})
 
 async function submitCreateContract(e) {
   e.preventDefault()
