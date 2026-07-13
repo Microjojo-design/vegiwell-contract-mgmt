@@ -42,6 +42,18 @@
   .form-label { display:block; font-size:13px; font-weight:500; color:#374151; margin-bottom:4px; }
   .form-group { margin-bottom:16px; }
   tr.clickable:hover { background:#fdf8f4; cursor:pointer; }
+  /* AI 審查頁：篩選 chips 與案件歷程 timeline */
+  .fchip { border:1px solid #e5e7eb; background:#fff; color:#6b7280; font-size:12px; padding:3px 12px; border-radius:9999px; cursor:pointer; }
+  .fchip.on { background:#BA693D; border-color:#BA693D; color:#fff; }
+  .tstep { display:flex; gap:12px; position:relative; padding-bottom:18px; font-size:13px; }
+  .tstep:not(:last-child)::before { content:""; position:absolute; left:11px; top:24px; bottom:0; width:2px; background:#e5e7eb; }
+  .tstep.done::before { background:#D6B474; }
+  .tdot { width:24px; height:24px; border-radius:50%; flex-shrink:0; z-index:1; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+  .tstep.done .tdot { background:#BA693D; color:#fff; border-color:#BA693D; }
+  .tstep.wait .tdot { background:#FEECD2; color:#9a5430; border-color:#D6B474; }
+  .rdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; background:#4f46e5; animation:rpulse 1.4s ease-in-out infinite; }
+  @keyframes rpulse { 50% { opacity:.3; } }
+  @media (prefers-reduced-motion: reduce) { .rdot { animation:none; } }
   /* 品牌色 scrollbar */
   ::-webkit-scrollbar { width:6px; }
   ::-webkit-scrollbar-track { background:#f3f4f6; }
@@ -87,7 +99,11 @@
       <div style="color:#D6B474; font-size:11px; margin-top:2px;">The Richdaily Group</div>
     </div>
     <nav style="flex:1; padding:12px 8px; display:flex; flex-direction:column; gap:4px;">
-      <a href="#contracts" class="sidebar-link active" data-view="contracts">
+      <a href="#reviews" class="sidebar-link active" data-view="reviews">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        AI 審查
+      </a>
+      <a href="#contracts" class="sidebar-link" data-view="contracts">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         合約列表
       </a>
@@ -108,6 +124,115 @@
 
   <!-- Main content -->
   <main style="flex:1; overflow:auto; background:#f8fafc;">
+
+    <!-- ── AI 審查（獨立頁：審查與建檔分流）── -->
+    <div id="view-reviews" class="hidden p-6">
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-gray-900">AI 合約審查</h2>
+        <p class="text-sm text-gray-500 mt-0.5">還沒定案的合約先丟這裡初審；審查紀錄永久留存，累積談判 know-how</p>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-gray-900" id="rstat-total">-</div>
+          <div class="text-xs text-gray-500 mt-1">累積審查</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-red-600" id="rstat-red">-</div>
+          <div class="text-xs text-gray-500 mt-1">🔴 高風險</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-amber-500" id="rstat-yellow">-</div>
+          <div class="text-xs text-gray-500 mt-1">🟡 修改後可簽</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-2xl font-bold text-green-600" id="rstat-green">-</div>
+          <div class="text-xs text-gray-500 mt-1">🟢 可簽署</div>
+        </div>
+      </div>
+
+      <!-- 送審區 -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm mb-6 overflow-hidden">
+        <div class="p-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <h3 class="font-bold text-gray-900">送審新合約</h3>
+          <span class="text-xs text-gray-400">上傳後約 15 分鐘內完成，Telegram 會推摘要通知</span>
+        </div>
+        <form id="form-review-submit" class="p-5" onsubmit="submitReviewCase(event)">
+          <div id="review-drop" onclick="$('review-file').click()"
+               style="border:2px dashed #d1d5db; border-radius:10px; padding:20px; text-align:center; color:#6b7280; cursor:pointer; background:#fafafa;">
+            <span id="review-drop-text"><b style="color:#BA693D;">點擊選擇檔案</b>（支援 PDF / DOCX / JPG / PNG，上限 20MB）</span>
+          </div>
+          <input type="file" id="review-file" class="hidden" accept=".pdf,.docx,.jpg,.jpeg,.png"
+                 onchange="$('review-drop-text').innerHTML = this.files[0] ? '📄 ' + esc(this.files[0].name) : '<b style=&quot;color:#BA693D;&quot;>點擊選擇檔案</b>（支援 PDF / DOCX / JPG / PNG，上限 20MB）'">
+          <div class="grid grid-cols-3 gap-4 mt-4">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">對方名稱 *</label>
+              <input type="text" name="counterparty" required placeholder="例：〇〇通路股份有限公司">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">合約類型</label>
+              <select name="contract_type">
+                <option value="">自動判定（AI 讀合約）</option>
+                <option value="channel">通路／平台</option>
+                <option value="kol">KOL／團購合作</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">公司別 *</label>
+              <select name="co" required>
+                <option value="shixin">蒔心田生醫</option>
+                <option value="xiaori">小日常</option>
+                <option value="xiangyue">翔悅建設</option>
+                <option value="gaoshu">高速駕訓班</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group mt-4" style="margin-bottom:0;">
+            <label class="form-label">備註（選填）</label>
+            <input type="text" name="note" placeholder="例：對方回簽版，請與我方 6/20 送出版比對">
+          </div>
+          <div id="review-submit-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mt-4"></div>
+          <div class="flex items-center justify-between gap-3 mt-4 flex-wrap">
+            <span class="text-xs text-gray-400">這裡的紀錄與「合約列表」建檔互相獨立，簽定後再去建檔即可</span>
+            <button type="submit" class="btn btn-primary">送出審查</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 審查紀錄 -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <h3 class="font-bold text-gray-900">審查紀錄</h3>
+          <div class="flex gap-2 flex-wrap" id="review-filters">
+            <button class="fchip on" data-f="all" onclick="filterReviews(this)">全部</button>
+            <button class="fchip" data-f="red" onclick="filterReviews(this)">🔴 高風險</button>
+            <button class="fchip" data-f="yellow" onclick="filterReviews(this)">🟡 修改後可簽</button>
+            <button class="fchip" data-f="green" onclick="filterReviews(this)">🟢 可簽署</button>
+            <button class="fchip" data-f="active" onclick="filterReviews(this)">進行中</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="w-full text-sm" style="min-width:760px;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:1px solid #e5e7eb;">
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">日期</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">對方</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">公司</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">類型</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">結果</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">一句話總評</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">案件進度</th>
+              </tr>
+            </thead>
+            <tbody id="reviews-tbody">
+              <tr><td colspan="7" class="text-center py-12 text-gray-400">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <!-- ── 合約列表 ── -->
     <div id="view-contracts" class="hidden p-6">
@@ -464,6 +589,37 @@
   </div>
 </div>
 
+<!-- AI 審查：案件詳情 Modal -->
+<div id="modal-review-case" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:780px;">
+    <div id="review-case-content" class="p-6 text-center text-gray-400">載入中...</div>
+  </div>
+</div>
+<!-- AI 審查：案件檔案上傳用（修訂版／對方回傳版），由 JS 觸發 -->
+<input type="file" id="review-case-file" class="hidden" accept=".pdf,.docx,.jpg,.jpeg,.png">
+
+<!-- AI 審查：連結正式合約 Modal -->
+<div id="modal-link-contract" class="modal-bg hidden">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900">連結正式合約</h3>
+      <button onclick="closeModal('modal-link-contract')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="p-6">
+      <p class="text-sm text-gray-500 mb-4">草約簽定並在「合約列表」建檔後，選擇對應的合約編號結案；案件將標記為「已簽定」。</p>
+      <div class="form-group">
+        <label class="form-label">正式合約 *</label>
+        <select id="link-contract-select"><option value="">載入中...</option></select>
+      </div>
+      <div id="link-contract-error" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-lg mb-4"></div>
+      <div class="flex justify-end gap-2">
+        <button class="btn btn-secondary" onclick="closeModal('modal-link-contract')">取消</button>
+        <button class="btn btn-primary" onclick="submitLinkContract()">確認連結並結案</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 上傳附件 Modal -->
 <div id="modal-upload" class="modal-bg hidden">
   <div class="modal-box" style="max-width:440px;">
@@ -681,13 +837,13 @@ function showLogin() {
 function showApp() {
   $('login-view').style.display = 'none'
   $('app').style.display = 'flex'
-  navigate(location.hash || '#contracts')
+  navigate(location.hash || '#reviews')
 }
 
 // ── Router ──
 function navigate(hash) {
   if (!authUser) return
-  const raw = hash.replace('#', '') || 'contracts'
+  const raw = hash.replace('#', '') || 'reviews'
   const parts = raw.split('/')
   const view = parts[0]
 
@@ -695,13 +851,16 @@ function navigate(hash) {
     el.classList.toggle('active', el.dataset.view === view)
   })
 
-  const views = ['contracts', 'contract-detail', 'categories', 'users']
+  const views = ['reviews', 'contracts', 'contract-detail', 'categories', 'users']
   views.forEach(v => { const el = $('view-' + v); if (el) el.classList.add('hidden') })
 
   if (view === 'contract' && parts[1]) {
     currentContractId = parts[1]
     $('view-contract-detail').classList.remove('hidden')
     loadContractDetail(parts[1])
+  } else if (view === 'contracts') {
+    $('view-contracts').classList.remove('hidden')
+    loadContracts()
   } else if (view === 'categories') {
     $('view-categories').classList.remove('hidden')
     loadCategoriesView()
@@ -709,8 +868,8 @@ function navigate(hash) {
     $('view-users').classList.remove('hidden')
     loadUsersView()
   } else {
-    $('view-contracts').classList.remove('hidden')
-    loadContracts()
+    $('view-reviews').classList.remove('hidden')
+    loadReviews()
   }
 }
 
@@ -795,12 +954,11 @@ function renderContractTableFrom(list) {
 async function loadContractDetail(id) {
   $('contract-detail-content').innerHTML = `<div class="text-center py-16 text-gray-400">載入中...</div>`
 
-  const [{ data: contract }, { data: milestones }, { data: versions }, { data: logs }, reviewsRes] = await Promise.all([
+  const [{ data: contract }, { data: milestones }, { data: versions }, { data: logs }] = await Promise.all([
     sb.from('contracts').select('*, cntr_categories(name, code)').eq('id', id).single(),
     sb.from('contract_milestones').select('*').eq('contract_id', id).order('sort_order').order('created_at' , { referencedTable: 'contract_milestones', ascending: true }),
     sb.from('contract_versions').select('*').eq('contract_id', id).is('archived_at', null).order('uploaded_at', { ascending: false }),
-    sb.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }).limit(50),
-    sb.from('contract_reviews').select('*').eq('contract_id', id).order('created_at', { ascending: false })
+    sb.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }).limit(50)
   ])
 
   if (!contract) {
@@ -808,12 +966,10 @@ async function loadContractDetail(id) {
     return
   }
 
-  // contract_reviews 表未建立時（42P01/404）容錯為空陣列
-  const reviews = reviewsRes.error ? [] : (reviewsRes.data || [])
-  renderContractDetail(contract, milestones || [], versions || [], logs || [], reviews)
+  renderContractDetail(contract, milestones || [], versions || [], logs || [])
 }
 
-function renderContractDetail(c, milestones, versions, logs, reviews = []) {
+function renderContractDetail(c, milestones, versions, logs) {
   const isArchived = !!c.archived_at
 
   $('contract-detail-content').innerHTML = `
@@ -852,7 +1008,6 @@ function renderContractDetail(c, milestones, versions, logs, reviews = []) {
         <button class="tab-btn active" onclick="showTab('info', this)">基本資訊</button>
         <button class="tab-btn" onclick="showTab('milestones', this)">里程碑 (${milestones.length})</button>
         <button class="tab-btn" onclick="showTab('versions', this)">附件 (${versions.length})</button>
-        <button class="tab-btn" onclick="showTab('ai', this)">AI 審查 (${reviews.length})</button>
         <button class="tab-btn" onclick="showTab('logs', this)">稽核日誌</button>
       </div>
 
@@ -943,14 +1098,6 @@ function renderContractDetail(c, milestones, versions, logs, reviews = []) {
         }
       </div>
 
-      <!-- Tab: AI 審查 -->
-      <div id="tab-ai" class="hidden p-6">
-        ${reviews.length === 0
-          ? `<div class="text-center py-12 text-gray-400">尚無 AI 審查紀錄<div class="text-xs mt-2">上傳合約附件後，系統於 15 分鐘內自動審查</div></div>`
-          : reviews.map(r => renderReview(r, versions)).join('')
-        }
-      </div>
-
       <!-- Tab: 稽核日誌 -->
       <div id="tab-logs" class="hidden p-6">
         ${logs.length === 0
@@ -979,47 +1126,8 @@ function infoRow(label, value) {
   return `<div><div style="font-size:12px;color:#9ca3af;font-weight:500;margin-bottom:2px;">${label}</div><div style="font-size:14px;color:#1f2937;">${esc(value) || '-'}</div></div>`
 }
 
-// AI 審查紀錄。report_md 為 LLM 產出＝不可信輸入，一律 esc() 後以 pre 呈現
-const REVIEW_RISK = {
-  red:    { icon: '🔴', label: '高風險', bg: '#fef2f2', color: '#b91c1c' },
-  yellow: { icon: '🟡', label: '修改後可簽', bg: '#fffbeb', color: '#b45309' },
-  green:  { icon: '🟢', label: '可簽署', bg: '#f0fdf4', color: '#15803d' },
-}
-const REVIEW_TYPE = { channel: '通路/平台', kol: 'KOL/網紅', other: '其他' }
-function renderReview(r, versions) {
-  const ver = versions.find(v => v.id === r.version_id)
-  const fileName = ver ? (ver.file_name || ver.version_no) : '（版次已刪除）'
-  if (r.status !== 'done') {
-    const msg = r.status === 'processing' ? '審查中…' : `審查失敗（已重試 ${r.retry_count} 次）：${esc(r.error || '')}`
-    return `<div class="mb-4 p-4 rounded-lg border border-gray-100 bg-gray-50 text-sm text-gray-500">
-      <span class="font-medium text-gray-700">${esc(fileName)}</span> — ${msg}</div>`
-  }
-  const risk = REVIEW_RISK[r.risk_level] || REVIEW_RISK.yellow
-  const detailId = 'review-detail-' + r.id
-  return `
-    <div class="mb-4 rounded-lg border border-gray-100 overflow-hidden">
-      <div class="p-4" style="background:${risk.bg};">
-        <div class="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <span class="font-semibold" style="color:${risk.color};">${risk.icon} ${risk.label}</span>
-            <span class="badge ml-2" style="background:#fff;color:#6b7280;">${REVIEW_TYPE[r.contract_type] || esc(r.contract_type || '-')}</span>
-            <span class="text-xs text-gray-500 ml-2">${esc(fileName)}・${fmtDate(r.reviewed_at)}・${esc(r.model || '')}</span>
-          </div>
-          <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;"
-            onclick="const el=$('${detailId}'); el.classList.toggle('hidden'); this.textContent=el.classList.contains('hidden')?'展開報告':'收合報告'">展開報告</button>
-        </div>
-        <div class="text-sm text-gray-700 mt-2">${esc(r.summary || '')}</div>
-        ${r.risk_level === 'red' ? `<div class="text-xs mt-1" style="color:${risk.color};">⚠️ 高風險：建議另做第二意見交叉驗證，重大合約簽署前應由律師複核</div>` : ''}
-      </div>
-      <div id="${detailId}" class="hidden p-4 bg-white" style="border-top:1px solid #f3f4f6;">
-        <pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.7;color:#374151;margin:0;">${esc(r.report_md || '')}</pre>
-        <div class="text-xs text-gray-400 mt-3">本報告為 AI 初審意見，不構成正式法律意見。</div>
-      </div>
-    </div>`
-}
-
 function showTab(tab, btn) {
-  const tabs = ['info', 'milestones', 'versions', 'ai', 'logs']
+  const tabs = ['info', 'milestones', 'versions', 'logs']
   tabs.forEach(t => {
     const el = $('tab-' + t)
     if (el) el.classList.toggle('hidden', t !== tab)
@@ -1562,6 +1670,364 @@ async function loadUsersView() {
       </td>
     </tr>
   `).join('')
+}
+
+// ══════════════════════════════════ AI 審查（案件制）══════════════════════════════════
+// 每筆審查＝一個案件：原稿初審 → 修訂版 → 送對方 → 回簽比對 → 連結正式合約結案。
+// AI 產出（summary/report_md）＝不可信輸入，一律 esc() 後以 pre 呈現。
+const REVIEW_RISK = {
+  red:    { icon: '🔴', label: '不建議簽署', bg: '#fef2f2', color: '#b91c1c' },
+  yellow: { icon: '🟡', label: '修改後可簽', bg: '#fffbeb', color: '#b45309' },
+  green:  { icon: '🟢', label: '可簽署', bg: '#f0fdf4', color: '#15803d' },
+}
+const COMPARE_RISK = {
+  red:    { icon: '🚨', label: '回簽有未經同意修改', bg: '#fef2f2', color: '#b91c1c' },
+  yellow: { icon: '🟡', label: '回簽有差異需確認', bg: '#fffbeb', color: '#b45309' },
+  green:  { icon: '✅', label: '與送出版一致', bg: '#f0fdf4', color: '#15803d' },
+}
+const REVIEW_TYPE = { channel: '通路/平台', kol: 'KOL/團購', other: '其他' }
+const RC_STATUS = {
+  reviewing:   { label: '① 初審中',     style: 'background:#eef2ff;color:#4338ca', pulse: true },
+  reviewed:    { label: '② 報告已出',   style: 'background:#fefce8;color:#a16207' },
+  sent:        { label: '③ 已送對方',   style: 'background:#dbeafe;color:#1d4ed8' },
+  countersign: { label: '④ 回簽已比對', style: 'background:#fef3c7;color:#b45309' },
+  signed:      { label: '✔ 已簽定',     style: 'background:#dcfce7;color:#15803d' },
+  abandoned:   { label: '✕ 已放棄',     style: 'background:#f3f4f6;color:#6b7280' },
+}
+const REVIEW_ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+
+let allReviewCases = []
+let currentReviewCaseId = null
+let _reviewFilter = 'all'
+let _pendingCaseUploadKind = null
+
+function rcBadge(s) {
+  const c = RC_STATUS[s]
+  if (!c) return `<span>${esc(s || '-')}</span>`
+  return `<span class="badge" style="${c.style}">${c.pulse ? '<span class="rdot" style="margin-right:5px;"></span>' : ''}${c.label}</span>`
+}
+function riskBadge(level, kind) {
+  if (!level) return '<span class="text-gray-400 text-xs">—</span>'
+  const map = kind === 'countersign' ? COMPARE_RISK : REVIEW_RISK
+  const r = map[level]
+  return `<span class="badge" style="background:${r.bg};color:${r.color};">${r.icon} ${r.label}</span>`
+}
+
+// ── 列表 ──
+async function loadReviews() {
+  const { data, error } = await sb.from('review_cases').select('*').order('created_at', { ascending: false })
+  if (error) {
+    // 資料表尚未建立時（42P01/404）給明確提示，不擋其他頁面
+    $('reviews-tbody').innerHTML = `<tr><td colspan="7" class="text-center py-12 text-gray-400">
+      AI 審查資料表尚未建立<div class="text-xs mt-2">請先於 Supabase 執行 phase2_review_cases.sql</div></td></tr>`
+    ;['rstat-total','rstat-red','rstat-yellow','rstat-green'].forEach(id => $(id).textContent = '-')
+    return
+  }
+  allReviewCases = data || []
+  renderReviewStats()
+  renderReviewsTable()
+}
+
+function renderReviewStats() {
+  $('rstat-total').textContent  = allReviewCases.length
+  $('rstat-red').textContent    = allReviewCases.filter(c => c.risk_level === 'red').length
+  $('rstat-yellow').textContent = allReviewCases.filter(c => c.risk_level === 'yellow').length
+  $('rstat-green').textContent  = allReviewCases.filter(c => c.risk_level === 'green').length
+}
+
+function filterReviews(btn) {
+  _reviewFilter = btn.dataset.f
+  document.querySelectorAll('#review-filters .fchip').forEach(b => b.classList.toggle('on', b === btn))
+  renderReviewsTable()
+}
+
+function renderReviewsTable() {
+  const list = allReviewCases.filter(c => {
+    if (_reviewFilter === 'all') return true
+    if (_reviewFilter === 'active') return !['signed', 'abandoned'].includes(c.case_status)
+    return c.risk_level === _reviewFilter
+  })
+  const tbody = $('reviews-tbody')
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-12 text-gray-400">暫無審查紀錄</td></tr>`
+    return
+  }
+  tbody.innerHTML = list.map(c => `
+    <tr class="clickable" style="border-bottom:1px solid #f3f4f6;" onclick="openReviewCase('${c.id}')">
+      <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${fmtDate(c.created_at)}</td>
+      <td class="px-4 py-3 text-sm font-medium text-gray-900" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.counterparty)}</td>
+      <td class="px-4 py-3">${coBadge(c.co)}</td>
+      <td class="px-4 py-3 text-xs text-gray-600">${REVIEW_TYPE[c.contract_type] || '待判定'}</td>
+      <td class="px-4 py-3">${c.case_status === 'reviewing' ? '<span class="text-gray-400 text-xs">審查中…</span>' : riskBadge(c.risk_level)}</td>
+      <td class="px-4 py-3 text-xs text-gray-600" style="max-width:280px;">${esc(c.summary || '')}</td>
+      <td class="px-4 py-3 whitespace-nowrap">${rcBadge(c.case_status)}</td>
+    </tr>
+  `).join('')
+}
+
+// ── 送審 ──
+async function submitReviewCase(e) {
+  e.preventDefault()
+  const form = e.target
+  const fd = new FormData(form)
+  const file = $('review-file').files[0]
+  clearErr('review-submit-error')
+
+  if (!file) { showErr('review-submit-error', '請選擇合約檔案'); return }
+  try { validateFile(file, REVIEW_ALLOWED_TYPES) }
+  catch (err) { showErr('review-submit-error', err.message); return }
+
+  const btn = form.querySelector('button[type=submit]')
+  btn.textContent = '送審中...'
+  btn.disabled = true
+  try {
+    const { data: caseRow, error: caseErr } = await sb.from('review_cases').insert({
+      co:            fd.get('co'),
+      counterparty:  fd.get('counterparty').trim(),
+      contract_type: fd.get('contract_type') || null,
+      note:          fd.get('note')?.trim() || null,
+      created_by:    authUser?.email || ''
+    }).select().single()
+    if (caseErr) { showErr('review-submit-error', caseErr.message); return }
+
+    try {
+      await uploadReviewItem(caseRow, file, 'original')
+    } catch (err) {
+      // 檔案階段失敗：案件標記放棄避免殘留半成品（無 DELETE 權限）
+      await sb.from('review_cases').update({ case_status: 'abandoned', closed_at: new Date().toISOString(),
+        note: `送審失敗自動作廢：${err.message}`.slice(0, 500) }).eq('id', caseRow.id)
+      showErr('review-submit-error', `檔案上傳失敗：${err.message}，請重新送審`)
+      return
+    }
+
+    form.reset()
+    $('review-file').value = ''
+    $('review-drop-text').innerHTML = '<b style="color:#BA693D;">點擊選擇檔案</b>（支援 PDF / DOCX / JPG / PNG，上限 20MB）'
+    loadReviews()
+  } finally {
+    btn.textContent = '送出審查'
+    btn.disabled = false
+  }
+}
+
+async function uploadReviewItem(caseRow, file, kind) {
+  const ext = file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '')
+  const storagePath = `reviews/${caseRow.co}/${caseRow.id}/${Date.now()}.${ext}`
+  const { error: upErr } = await sb.storage.from('contract-files').upload(storagePath, file, { upsert: false })
+  if (upErr) throw new Error(upErr.message)
+
+  const { error: itemErr } = await sb.from('review_items').insert({
+    case_id:      caseRow.id,
+    kind,
+    file_name:    sanitizeFilename(file.name),
+    storage_path: storagePath,
+    mime_type:    file.type,
+    file_size:    file.size,
+    ai_status:    kind === 'revision' ? 'none' : 'pending',
+    created_by:   authUser?.email || ''
+  })
+  if (itemErr) {
+    await sb.storage.from('contract-files').remove([storagePath])
+    throw new Error(itemErr.message)
+  }
+}
+
+// ── 案件詳情 Modal ──
+async function openReviewCase(id) {
+  currentReviewCaseId = id
+  $('review-case-content').innerHTML = '<div class="py-8 text-center text-gray-400">載入中...</div>'
+  $('modal-review-case').classList.remove('hidden')
+
+  const [{ data: c }, { data: items }] = await Promise.all([
+    sb.from('review_cases').select('*, contracts:linked_contract_id(no, title)').eq('id', id).single(),
+    sb.from('review_items').select('*').eq('case_id', id).order('created_at')
+  ])
+  if (!c) { $('review-case-content').innerHTML = '<div class="py-8 text-center text-red-400">案件不存在或無存取權限</div>'; return }
+  renderReviewCase(c, items || [])
+}
+
+function reportBlock(it) {
+  const isCompare = it.kind === 'countersign'
+  if (it.ai_status === 'processing' || it.ai_status === 'pending') {
+    return `<div class="mb-3 p-4 rounded-lg border border-gray-100 bg-gray-50 text-sm text-gray-500">
+      <span class="rdot" style="margin-right:6px;"></span>${isCompare ? '回簽比對中' : 'AI 審查中'}…（${esc(it.file_name)}，約 15 分鐘內完成）</div>`
+  }
+  if (it.ai_status === 'failed') {
+    return `<div class="mb-3 p-4 rounded-lg border border-red-100 bg-red-50 text-sm text-red-600">
+      ${isCompare ? '回簽比對' : 'AI 審查'}失敗（已重試 ${it.retry_count} 次）：${esc(it.error || '')}</div>`
+  }
+  if (it.ai_status !== 'done') return ''
+  const risk = (isCompare ? COMPARE_RISK : REVIEW_RISK)[it.risk_level] || REVIEW_RISK.yellow
+  const detailId = 'case-report-' + it.id
+  return `
+    <div class="mb-3 rounded-lg border border-gray-100 overflow-hidden">
+      <div class="p-4" style="background:${risk.bg};">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <span class="font-semibold" style="color:${risk.color};">${risk.icon} ${risk.label}</span>
+            <span class="text-xs text-gray-500 ml-2">${isCompare ? '回簽比對' : '初審'}・${esc(it.file_name)}・${fmtDate(it.reviewed_at)}</span>
+          </div>
+          <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;"
+            onclick="const el=$('${detailId}'); el.classList.toggle('hidden'); this.textContent=el.classList.contains('hidden')?'展開報告':'收合報告'">展開報告</button>
+        </div>
+        <div class="text-sm text-gray-700 mt-2">${esc(it.summary || '')}</div>
+        ${!isCompare && it.risk_level === 'red' ? `<div class="text-xs mt-1" style="color:${risk.color};">⚠️ 高風險：建議另做第二意見交叉驗證，重大合約簽署前應由律師複核</div>` : ''}
+      </div>
+      <div id="${detailId}" class="hidden p-4 bg-white" style="border-top:1px solid #f3f4f6;">
+        <pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.7;color:#374151;margin:0;">${esc(it.report_md || '')}</pre>
+        <div class="text-xs text-gray-400 mt-3">本報告為 AI 初審意見，不構成正式法律意見。</div>
+      </div>
+    </div>`
+}
+
+function renderReviewCase(c, items) {
+  const originals = items.filter(i => i.kind === 'original')
+  const revisions = items.filter(i => i.kind === 'revision')
+  const countersigns = items.filter(i => i.kind === 'countersign')
+  const closed = ['signed', 'abandoned'].includes(c.case_status)
+  const reported = originals.some(i => i.ai_status === 'done')
+  const dl = it => `<a href="#" class="text-xs" style="color:#BA693D;font-weight:500;" onclick="downloadVersion('${it.storage_path}');return false;">⬇ ${esc(it.file_name)}</a>`
+
+  // 案件歷程
+  const steps = []
+  const org = originals[0]
+  steps.push({
+    state: 'done',
+    title: '① 上傳原稿・AI 初審',
+    meta: org ? fmtDate(org.created_at) : '',
+    body: org ? `${dl(org)}${org.ai_status === 'done' ? `　→ ${riskBadge(org.risk_level)}` : org.ai_status === 'failed' ? '　→ <span class="text-red-500 text-xs">審查失敗</span>' : '　→ <span class="text-gray-400 text-xs">審查中…</span>'}` : '<span class="text-red-400 text-xs">找不到原稿（送審時上傳失敗）</span>'
+  })
+  steps.push({
+    state: revisions.length ? 'done' : (reported && !closed ? 'wait' : 'todo'),
+    title: '② 產出修訂版 DOCX',
+    meta: revisions.length ? fmtDate(revisions[revisions.length - 1].created_at) : '',
+    body: revisions.length
+      ? revisions.map(dl).join('<br>')
+      : (reported && !closed ? `<span class="text-xs text-gray-500">把報告丟給 Claude Code 產修訂版後上傳；也可跳過直接送對方</span><br><button class="btn btn-secondary" style="margin-top:6px;padding:4px 12px;font-size:12px;" onclick="caseUpload('revision')">⬆ 上傳修訂版</button>` : '')
+  })
+  steps.push({
+    state: c.sent_at ? 'done' : (reported && !closed ? 'wait' : 'todo'),
+    title: '③ 送對方（Email／LINE 自行寄出後回來標記）',
+    meta: c.sent_at ? fmtDate(c.sent_at) : '',
+    body: !c.sent_at && reported && !closed ? `<button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="markCaseSent()">✓ 標記已送對方</button>` : ''
+  })
+  steps.push({
+    state: countersigns.length ? 'done' : (c.sent_at && !closed ? 'wait' : 'todo'),
+    title: '④ 對方回傳 → 上傳回簽版，AI 自動比對',
+    meta: countersigns.length ? fmtDate(countersigns[countersigns.length - 1].created_at) : '',
+    body: countersigns.length
+      ? countersigns.map(i => `${dl(i)}${i.ai_status === 'done' ? `　→ ${riskBadge(i.risk_level, 'countersign')}` : '　→ <span class="text-gray-400 text-xs">比對中…</span>'}`).join('<br>') + (!closed ? `<br><button class="btn btn-secondary" style="margin-top:6px;padding:4px 12px;font-size:12px;" onclick="caseUpload('countersign')">⬆ 再上傳一版</button>` : '')
+      : (!closed && reported ? `<button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="caseUpload('countersign')">⬆ 上傳對方回傳版</button>` : '')
+  })
+  steps.push({
+    state: c.case_status === 'signed' ? 'done' : (!closed && reported ? 'wait' : 'todo'),
+    title: '⑤ 用印 → 到「合約列表」建檔 → 連結編號結案',
+    meta: c.closed_at ? fmtDate(c.closed_at) : '',
+    body: c.case_status === 'signed' && c.contracts
+      ? `<a href="#contract/${c.linked_contract_id}" class="text-xs" style="color:#BA693D;font-weight:500;" onclick="closeModal('modal-review-case')">📎 ${esc(c.contracts.no)}｜${esc(c.contracts.title)} ↗</a>`
+      : (c.case_status === 'abandoned' ? '<span class="text-xs text-gray-400">案件已放棄</span>'
+         : (reported ? `<button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="openLinkContract()">📎 連結正式合約</button>` : ''))
+  })
+
+  $('review-case-content').innerHTML = `
+    <div class="flex items-start justify-between gap-3 mb-1">
+      <div>
+        <h3 class="text-lg font-bold text-gray-900" style="text-align:left;">${esc(c.counterparty)}　${rcBadge(c.case_status)}</h3>
+        <div class="text-xs text-gray-400 mt-1" style="text-align:left;">${coBadge(c.co)}　${REVIEW_TYPE[c.contract_type] || '類型待判定'}・送審 ${fmtDate(c.created_at)}・${esc(c.created_by || '')}</div>
+        ${c.note ? `<div class="text-xs text-gray-500 mt-1" style="text-align:left;">備註：${esc(c.note)}</div>` : ''}
+      </div>
+      <button onclick="closeModal('modal-review-case')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="mt-4" style="text-align:left;">
+      ${[...countersigns, ...originals].reverse().map(reportBlock).join('') || '<div class="text-sm text-gray-400 py-4">尚無報告</div>'}
+    </div>
+    <div class="mt-4 p-4 rounded-lg" style="background:#fbf9f6;border:1px solid #efe7dc;text-align:left;">
+      <div class="text-sm font-bold text-gray-800 mb-3">案件歷程</div>
+      ${steps.map(s => `
+        <div class="tstep ${s.state}">
+          <div class="tdot">${s.state === 'done' ? '✓' : s.title.charAt(0)}</div>
+          <div style="min-width:0;">
+            <span class="font-medium text-gray-800">${s.title}</span>
+            ${s.meta ? `<span class="text-xs text-gray-400 ml-2">${s.meta}</span>` : ''}
+            ${s.body ? `<div class="mt-1" style="font-size:12.5px;color:#6b7280;">${s.body}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="flex justify-between items-center mt-4 flex-wrap gap-2">
+      <span class="text-xs text-gray-400">寄送給對方在系統外進行；系統負責審、比對、記錄整場談判</span>
+      ${!closed ? `<button class="btn btn-secondary" style="color:#b91c1c;" onclick="abandonCase()">✕ 放棄案件</button>` : ''}
+    </div>`
+}
+
+// ── 案件動作 ──
+function caseUpload(kind) {
+  _pendingCaseUploadKind = kind
+  $('review-case-file').value = ''
+  $('review-case-file').click()
+}
+
+$('review-case-file').addEventListener('change', async e => {
+  const file = e.target.files[0]
+  if (!file || !currentReviewCaseId || !_pendingCaseUploadKind) return
+  try { validateFile(file, REVIEW_ALLOWED_TYPES) }
+  catch (err) { alert(err.message); return }
+  const c = allReviewCases.find(x => x.id === currentReviewCaseId)
+  if (!c) return
+  try {
+    await uploadReviewItem(c, file, _pendingCaseUploadKind)
+    openReviewCase(currentReviewCaseId)
+    loadReviews()
+  } catch (err) {
+    alert('上傳失敗：' + err.message)
+  } finally {
+    _pendingCaseUploadKind = null
+  }
+})
+
+async function markCaseSent() {
+  const { error } = await sb.from('review_cases')
+    .update({ case_status: 'sent', sent_at: new Date().toISOString() })
+    .eq('id', currentReviewCaseId)
+  if (error) { alert('更新失敗：' + error.message); return }
+  openReviewCase(currentReviewCaseId)
+  loadReviews()
+}
+
+async function openLinkContract() {
+  const c = allReviewCases.find(x => x.id === currentReviewCaseId)
+  const sel = $('link-contract-select')
+  sel.innerHTML = '<option value="">載入中...</option>'
+  clearErr('link-contract-error')
+  $('modal-link-contract').classList.remove('hidden')
+  const { data } = await sb.from('contracts').select('id, no, title')
+    .eq('co', c?.co).is('archived_at', null).order('created_at', { ascending: false })
+  sel.innerHTML = '<option value="">請選擇合約</option>' +
+    (data || []).map(k => `<option value="${k.id}">${esc(k.no)}｜${esc(k.title)}</option>`).join('')
+}
+
+async function submitLinkContract() {
+  const contractId = $('link-contract-select').value
+  if (!contractId) { showErr('link-contract-error', '請選擇合約'); return }
+  const { error } = await sb.from('review_cases').update({
+    linked_contract_id: contractId,
+    case_status: 'signed',
+    closed_at: new Date().toISOString()
+  }).eq('id', currentReviewCaseId)
+  if (error) { showErr('link-contract-error', error.message); return }
+  closeModal('modal-link-contract')
+  openReviewCase(currentReviewCaseId)
+  loadReviews()
+}
+
+async function abandonCase() {
+  if (!confirm('確認放棄此案件？紀錄會保留，狀態標為「已放棄」。')) return
+  const { error } = await sb.from('review_cases')
+    .update({ case_status: 'abandoned', closed_at: new Date().toISOString() })
+    .eq('id', currentReviewCaseId)
+  if (error) { alert('更新失敗：' + error.message); return }
+  openReviewCase(currentReviewCaseId)
+  loadReviews()
 }
 
 // ── Modal helpers ──
