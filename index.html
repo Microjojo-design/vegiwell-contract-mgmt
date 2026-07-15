@@ -1956,7 +1956,10 @@ function renderReviewCase(c, items) {
     </div>
     <div class="flex justify-between items-center mt-4 flex-wrap gap-2">
       <span class="text-xs text-gray-400">寄送給對方在系統外進行；系統負責審、比對、記錄整場談判</span>
-      ${!closed ? `<button class="btn btn-secondary" style="color:#b91c1c;" onclick="abandonCase()">✕ 放棄案件</button>` : ''}
+      <div class="flex gap-2">
+        ${!closed ? `<button class="btn btn-secondary" style="color:#b91c1c;" onclick="abandonCase()">✕ 放棄案件</button>` : ''}
+        ${userProfile?.role === 'gm' ? `<button class="btn btn-danger" onclick="deleteReviewCase()">🗑 徹底刪除</button>` : ''}
+      </div>
     </div>`
 }
 
@@ -2027,6 +2030,21 @@ async function abandonCase() {
     .eq('id', currentReviewCaseId)
   if (error) { alert('更新失敗：' + error.message); return }
   openReviewCase(currentReviewCaseId)
+  loadReviews()
+}
+
+// GM 限定：徹底刪除案件（含審查報告與 Storage 實體檔，不可復原）
+async function deleteReviewCase() {
+  const c = allReviewCases.find(x => x.id === currentReviewCaseId)
+  const name = c ? c.counterparty : '此案件'
+  if (!confirm(`⚠️ 徹底刪除「${name}」案件？\n\n將永久移除：案件紀錄、AI 審查報告、所有上傳檔案。\n此操作不可復原，其他同仁也將看不到。`)) return
+  // RPC 刪 DB 列並回傳 storage 路徑；前端再清實體檔
+  const { data: paths, error } = await sb.rpc('delete_review_case', { p_case_id: currentReviewCaseId })
+  if (error) { alert('刪除失敗：' + error.message); return }
+  if (Array.isArray(paths) && paths.length) {
+    await sb.storage.from('contract-files').remove(paths)
+  }
+  closeModal('modal-review-case')
   loadReviews()
 }
 
